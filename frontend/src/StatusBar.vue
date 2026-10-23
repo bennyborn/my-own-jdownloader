@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Clock, Download, Link2, Package, Plus } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
 import SpeedGraph, { type SpeedSample } from './SpeedGraph.vue'
 import type { DownloadsSnapshot } from './types'
@@ -10,14 +10,33 @@ defineEmits<{ addLinks: [] }>()
 
 const WINDOW_SECONDS = 300
 
-// Speed history for the background graph (collected in the browser, starts when the page opens).
+// Speed history for the background graph: prefilled from the backend (which records it all the time),
+// then extended with every live update.
 const samples = ref<SpeedSample[]>([])
+let clockOffset = 0 // browser time minus server time, so both agree on "now"
+const addSamples = (added: SpeedSample[]) => {
+  const newest = Math.max(0, ...added.map((s) => s.t))
+  const cutoff = newest - (WINDOW_SECONDS + 30) * 1000
+  samples.value = [...samples.value, ...added].filter((s) => s.t >= cutoff).sort((a, b) => a.t - b.t)
+}
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/speed-history')
+    if (!res.ok) return
+    const data = (await res.json()) as { now: number; samples: SpeedSample[] }
+    clockOffset = Date.now() - data.now
+    addSamples(data.samples.map((s) => ({ t: s.t + clockOffset, v: s.v })))
+  } catch {
+    /* the graph then simply starts empty */
+  }
+})
+
 watch(
   () => props.snapshot?.updatedAt,
   (t) => {
     if (!t || !props.snapshot) return
-    const cutoff = t - (WINDOW_SECONDS + 30) * 1000
-    samples.value = [...samples.value.filter((s) => s.t >= cutoff), { t, v: props.snapshot.totalSpeed }]
+    addSamples([{ t: t + clockOffset, v: props.snapshot.totalSpeed }])
   }
 )
 

@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
+import { BandwidthHistory } from './bandwidth.js'
 import { createAuthHook } from './auth.js'
 import { DownloadsPoller } from './downloads.js'
 import { ConflictError, ListOps, type Area } from './listops.js'
@@ -28,9 +29,12 @@ app.log.info(`Using device "${device.name}"`)
 
 const poller = new DownloadsPoller(client, device.id)
 const grabber = new Linkgrabber(client, device.id)
+const bandwidth = new BandwidthHistory(client, device.id)
+bandwidth.start()
 
 app.get('/api/health', async () => ({ status: 'ok' }))
 app.get('/api/devices', async () => devices.map(({ id, name, type }) => ({ id, name, type })))
+app.get('/api/speed-history', async () => ({ now: Date.now(), samples: bandwidth.getSamples() }))
 app.get('/api/downloads', async () => poller.refresh())
 
 app.get<{ Params: { uuid: string } }>('/api/packages/:uuid/links', async (request, reply) => {
