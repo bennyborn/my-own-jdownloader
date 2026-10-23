@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useDownloads } from './useDownloads'
-import { formatSpeed } from './format'
+import StatusBar from './StatusBar.vue'
 import PackageCard from './PackageCard.vue'
 import { reorderLocally, useDragReorder } from './dragReorder'
 
@@ -33,11 +33,6 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
 <template>
   <header>
     <h1>My Own JDownloader</h1>
-    <div class="summary">
-      <span class="dot" :class="{ on: connected }" :title="connected ? 'connected' : 'disconnected'" />
-      <span>{{ formatSpeed(snapshot?.totalSpeed ?? 0) }}</span>
-      <span>{{ packages.length }} packages</span>
-    </div>
   </header>
 
   <main>
@@ -56,6 +51,8 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
       @dragend="drag.onDragEnd()"
     />
   </main>
+
+  <StatusBar :snapshot="snapshot" :connected="connected" />
 </template>
 
 <style>
@@ -68,6 +65,8 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
   --border: #e3e6ea;
   --accent: #2f7de1;
   --ok: #22a55b;
+  --fill-soft: var(--border);
+  --hover: rgba(127, 127, 127, 0.1);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -98,7 +97,7 @@ h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .summary { display: flex; align-items: center; gap: 12px; color: var(--muted); }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: #d14343; }
 .dot.on { background: var(--ok); }
-main { max-width: 900px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+main { max-width: 900px; margin: 0 auto; padding: 16px 16px 90px; display: grid; gap: 12px; }
 .error { color: #d14343; text-align: center; }
 .dragging { opacity: 0.4; }
 .drop-before { box-shadow: 0 -3px 0 var(--accent); }

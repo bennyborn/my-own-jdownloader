@@ -80,3 +80,10 @@ oder nur einzelnen auftritt. Danach entscheiden, ob sich die Extension lohnt.
 3. Projektgerüst und Docker-Setup anlegen.
 4. Phase 1: Protokoll-Client, Test gegen die echte Instanz.
 5. Git-Repository initialisieren (aktuell kein Repo).
+
+## TODO
+
+- Own fallback icon for unknown hosts (JD returns a generic icon instead of an error).
+- Higher-resolution host icons (the JD favicon is only 16x16).
+- Show "open connections" metric in the status bar (API call still unknown).
+- Password protection (`UI_PASSWORD`) before exposing the UI outside the local network.

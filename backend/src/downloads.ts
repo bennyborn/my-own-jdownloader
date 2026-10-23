@@ -19,6 +19,8 @@ export interface DownloadsSnapshot {
   updatedAt: number
   packages: DownloadPackage[]
   totalSpeed: number
+  linkCount: number
+  runningDownloads: number
 }
 
 export interface DownloadLink {
@@ -40,7 +42,7 @@ type Listener = (snapshot: DownloadsSnapshot) => void
 
 // Polls the device only while at least one listener is subscribed (read-only).
 export class DownloadsPoller {
-  private snapshot: DownloadsSnapshot = { updatedAt: 0, packages: [], totalSpeed: 0 }
+  private snapshot: DownloadsSnapshot = { updatedAt: 0, packages: [], totalSpeed: 0, linkCount: 0, runningDownloads: 0 }
   private listeners = new Set<Listener>()
   private timer?: NodeJS.Timeout
   private polling = false
@@ -121,6 +123,11 @@ export class DownloadsPoller {
     await this.client.callDevice(this.deviceId, '/downloadsV2/moveLinks', [linkIds, afterLinkId, packageId])
   }
 
+  // Read-only: favicon of a host, served by the JDownloader itself (null if unknown).
+  getHostIcon(host: string): Promise<{ type: string; data: Buffer } | null> {
+    return this.client.callDeviceBinary(this.deviceId, '/contentV2/getFavIcon', [host])
+  }
+
   async refresh(): Promise<DownloadsSnapshot> {
     await this.poll()
     return this.snapshot
@@ -165,10 +172,16 @@ export class DownloadsPoller {
         childCount: p.childCount ?? 0,
         hosts: p.hosts ?? []
       }))
+      // Minimal link query (all packages) just to count links and running downloads.
+      const links = await this.client.callDevice<{ running?: boolean }[]>(this.deviceId, '/downloadsV2/queryLinks', [
+        { maxResults: -1, startAt: 0, running: true }
+      ])
       this.snapshot = {
         updatedAt: Date.now(),
         packages,
-        totalSpeed: packages.reduce((sum, p) => sum + p.speed, 0)
+        totalSpeed: packages.reduce((sum, p) => sum + p.speed, 0),
+        linkCount: links.length,
+        runningDownloads: links.filter((l) => l.running).length
       }
       for (const listener of this.listeners) listener(this.snapshot)
     } catch (error) {

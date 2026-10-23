@@ -17,6 +17,8 @@ export interface DownloadsSnapshot {
   updatedAt: number
   packages: DownloadPackage[]
   totalSpeed: number
+  linkCount: number
+  runningDownloads: number
 }
 
 export interface DownloadLink {

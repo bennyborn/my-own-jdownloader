@@ -128,6 +128,23 @@ export class MyJdClient {
     return data.data as T
   }
 
+  // For endpoints that answer with raw, unencrypted binary data (e.g. /contentV2/getFavIcon).
+  async callDeviceBinary(deviceId: string, action: string, params: unknown[] = []): Promise<{ type: string; data: Buffer } | null> {
+    const session = this.requireSession()
+    const body = encrypt(
+      JSON.stringify({ url: action, params: params.map((p) => JSON.stringify(p)), rid: this.nextRid(), apiVer: 1 }),
+      session.deviceEncryptionToken
+    )
+    const res = await fetch(`${API_URL}/t_${session.token}_${deviceId}${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/aesjson-jd; charset=utf-8' },
+      body
+    })
+    const type = res.headers.get('content-type') ?? ''
+    if (!res.ok || !type.startsWith('image/')) return null
+    return { type, data: Buffer.from(await res.arrayBuffer()) }
+  }
+
   private requireSession(): Session {
     if (!this.session) throw new Error('Not connected, call connect() first')
     return this.session

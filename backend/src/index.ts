@@ -35,6 +35,18 @@ app.get<{ Params: { uuid: string } }>('/api/packages/:uuid/links', async (reques
   return poller.getLinks(uuid)
 })
 
+// Host icons come from the JDownloader itself (no third-party requests). Cached in memory.
+const iconCache = new Map<string, { type: string; data: Buffer } | null>()
+
+app.get<{ Params: { host: string } }>('/api/icons/:host', async (request, reply) => {
+  const host = request.params.host
+  if (!/^[a-z0-9.-]{1,100}$/i.test(host)) return reply.code(400).send({ error: 'Invalid host' })
+  if (!iconCache.has(host)) iconCache.set(host, await poller.getHostIcon(host))
+  const icon = iconCache.get(host)
+  if (!icon) return reply.code(404).send({ error: 'No icon' })
+  return reply.header('Cache-Control', 'public, max-age=86400').type(icon.type).send(icon.data)
+})
+
 const isIdList = (value: unknown): value is number[] =>
   Array.isArray(value) && value.length > 0 && value.every((v) => Number.isSafeInteger(v))
 

@@ -77,26 +77,35 @@ onUnmounted(() => clearInterval(timer))
     <div v-if="expanded" class="links">
             <p v-if="error" class="meta">Could not load links: {{ error }}</p>
       <p v-else-if="!links" class="meta">Loading…</p>
-      <div v-for="l in links ?? []"
+      <div
+        v-for="l in links ?? []"
         :key="l.uuid"
         class="link"
         :class="[stateOf(l), drag.dropClass(l.uuid), { dragging: drag.dragId.value === l.uuid }]"
+        :style="{ '--p': percentOf(l.bytesLoaded, l.bytesTotal) + '%' }"
+        :title="l.name"
         draggable="true"
         @dragstart.stop="drag.onDragStart(l.uuid, $event)"
         @dragover.stop="drag.onDragOver(l.uuid, $event)"
         @drop.stop="drag.onDrop($event)"
-        @dragend.stop="drag.onDragEnd()">
-        <div class="row">
+        @dragend.stop="drag.onDragEnd()"
+      >
+        <div class="main">
           <span class="name">{{ l.name }}</span>
+          <span class="sub">
+            <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="14" height="14" loading="lazy" @error="($event.target as HTMLElement).style.display = 'none'" />
+            {{ [l.host, l.status].filter(Boolean).join(' · ') }}
+          </span>
+        </div>
+        <div class="cell size">
+          <span>{{ formatBytes(l.bytesTotal) }}</span>
+          <span class="sub">{{ l.running ? formatBytes(l.bytesLoaded) + ' loaded' : '' }}</span>
+        </div>
+        <div class="cell state">
           <span class="badge">{{ l.skipped ? 'skipped' : stateOf(l) }}</span>
+          <span class="sub">{{ l.running ? `${formatSpeed(l.speed)} · ${formatEta(l.eta)}` : '' }}</span>
         </div>
-        <div class="bar small"><div class="fill" :style="{ width: percentOf(l.bytesLoaded, l.bytesTotal) + '%' }" /></div>
-        <div class="row meta">
-          <span>{{ formatBytes(l.bytesLoaded) }} / {{ formatBytes(l.bytesTotal) }}</span>
-          <span v-if="l.running">{{ formatSpeed(l.speed) }} · ETA {{ formatEta(l.eta) }}</span>
-          <span v-if="l.host">{{ l.host }}</span>
-        </div>
-        <div v-if="l.status" class="meta">{{ l.status }}</div>
+        <div class="pbar"><div class="pfill" /><span>{{ percentOf(l.bytesLoaded, l.bytesTotal).toFixed(0) }}%</span></div>
       </div>
     </div>
   </article>
@@ -125,9 +134,34 @@ onUnmounted(() => clearInterval(timer))
 .drop-before { box-shadow: 0 -3px 0 var(--accent); }
 .drop-after { box-shadow: 0 3px 0 var(--accent); }
 .link[draggable=true] { cursor: grab; }
-.links { margin-top: 12px; display: grid; gap: 8px; }
-.link { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
-.link.disabled { opacity: 0.6; }
-.name { overflow-wrap: anywhere; font-size: 0.9rem; }
-.bar.small { height: 5px; margin: 6px 0; }
+.links { margin-top: 10px; display: grid; }
+.link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 124px 120px;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+.link + .link { border-top: 1px solid var(--border); }
+.link:hover { background-color: var(--hover); }
+.link.disabled { opacity: 0.55; }
+.link .main, .link .cell { display: flex; flex-direction: column; min-width: 0; }
+.link .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.75rem; min-height: 1em; }
+.hosticon { vertical-align: -2px; margin-right: 4px; border-radius: 2px; }
+.link .size { text-align: right; font-variant-numeric: tabular-nums; }
+.link .state { font-variant-numeric: tabular-nums; }
+.pbar { position: relative; height: 22px; border-radius: 11px; background: var(--border); overflow: hidden; }
+.pfill { position: absolute; inset: 0 auto 0 0; width: var(--p); background: var(--accent); transition: width 0.5s; }
+.link.finished .pfill { background: var(--ok); }
+.link:not(.running):not(.finished) .pfill { background: var(--muted); }
+.pbar span { position: relative; display: block; text-align: center; line-height: 22px; font-size: 0.75rem; font-weight: 600; color: var(--text); mix-blend-mode: normal; }
+@media (max-width: 720px) {
+  .link { grid-template-columns: minmax(0, 1fr) 90px; }
+  .link .size, .link .state { display: none; }
+}
 </style>
