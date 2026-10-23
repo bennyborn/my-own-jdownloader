@@ -1,9 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { Clock, Download, Link2, Package, Plus } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
+import SpeedGraph, { type SpeedSample } from './SpeedGraph.vue'
 import type { DownloadsSnapshot } from './types'
 
 const props = defineProps<{ snapshot: DownloadsSnapshot | null; connected: boolean }>()
+defineEmits<{ addLinks: [] }>()
+
+const WINDOW_SECONDS = 300
+
+// Speed history for the background graph (collected in the browser, starts when the page opens).
+const samples = ref<SpeedSample[]>([])
+watch(
+  () => props.snapshot?.updatedAt,
+  (t) => {
+    if (!t || !props.snapshot) return
+    const cutoff = t - (WINDOW_SECONDS + 30) * 1000
+    samples.value = [...samples.value.filter((s) => s.t >= cutoff), { t, v: props.snapshot.totalSpeed }]
+  }
+)
 
 const totals = computed(() => {
   const packages = props.snapshot?.packages ?? []
@@ -13,55 +29,72 @@ const totals = computed(() => {
   return { total, loaded, speed, eta: speed > 0 ? (total - loaded) / speed : null }
 })
 
-const metrics = computed(() => [
-  ['Packages', String(props.snapshot?.packages.length ?? '–')],
-  ['Total bytes', formatBytes(totals.value.total)],
-  ['Bytes loaded', formatBytes(totals.value.loaded)],
-  ['Running downloads', String(props.snapshot?.runningDownloads ?? '–')],
-  ['Links', String(props.snapshot?.linkCount ?? '–')],
-  ['Speed', formatSpeed(totals.value.speed)],
-  ['Finished in', formatLongEta(totals.value.eta)]
-])
 </script>
 
 <template>
+  <div class="fade" aria-hidden="true" />
   <footer class="statusbar">
-    <button type="button" class="grabber" disabled title="Coming soon">Linkgrabber</button>
-    <dl>
-      <div v-for="[label, value] in metrics" :key="label">
-        <dt>{{ label }}</dt>
-        <dd>{{ value }}</dd>
-      </div>
-    </dl>
-    <span class="dot" :class="{ on: connected }" :title="connected ? 'connected' : 'disconnected'" />
+    <SpeedGraph :samples="samples" :window-seconds="WINDOW_SECONDS" />
+    <div class="content">
+      <button type="button" class="add" @click="$emit('addLinks')"><Plus :size="15" /> Add links</button>
+      <dl>
+        <div>
+          <dt>Queue</dt>
+          <dd class="icons">
+            <span title="Packages"><Package :size="14" />{{ snapshot?.packages.length ?? '–' }}</span>
+            <span title="Running downloads"><Download :size="14" />{{ snapshot?.runningDownloads ?? '–' }}</span>
+            <span title="Links"><Link2 :size="14" />{{ snapshot?.linkCount ?? '–' }}</span>
+          </dd>
+        </div>
+        <div title="Bytes loaded / total bytes">
+          <dt>Loaded</dt>
+          <dd>{{ formatBytes(totals.loaded) }} <span class="dim">/ {{ formatBytes(totals.total) }}</span></dd>
+        </div>
+        <div>
+          <dt>Speed</dt>
+          <dd>
+            {{ formatSpeed(totals.speed) }}
+            <span class="dim eta" title="Finished in"><Clock :size="13" />{{ formatLongEta(totals.eta) }}</span>
+          </dd>
+        </div>
+      </dl>
+      <span class="dot" :class="{ on: connected }" :title="connected ? 'connected' : 'disconnected'" />
+    </div>
   </footer>
 </template>
 
 <style scoped>
-.statusbar {
+.fade {
   position: fixed;
   inset: auto 0 0 0;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
+  height: 200px;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--bg) 35%, transparent);
+}
+.statusbar {
+  z-index: 1;
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: min(900px, calc(100% - 32px));
   background: var(--card);
-  border-top: 1px solid var(--border);
-  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
 }
-dl { display: flex; gap: 20px; margin: 0; flex: 1; }
-dl div { display: flex; flex-direction: column; white-space: nowrap; }
-dt { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
-dd { margin: 0; font-variant-numeric: tabular-nums; }
-.grabber {
-  background: var(--accent);
-  color: #fff;
-  border: 0;
-  border-radius: 6px;
-  padding: 8px 12px;
-  font: inherit;
-}
-.grabber:disabled { opacity: 0.5; }
+.content { position: relative; display: flex; align-items: center; gap: 20px; padding: 8px 14px; overflow-x: auto; }
+.add { display: inline-flex; align-items: center; gap: 5px; flex: none; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 12px; font: inherit; cursor: pointer; }
+dl { display: flex; flex: 1; gap: 28px; margin: 0; white-space: nowrap; }
+dl div { display: flex; flex-direction: column; }
+dt { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+dd { display: flex; align-items: center; gap: 10px; margin: 0; font-variant-numeric: tabular-nums; }
+.icons span { display: inline-flex; align-items: center; gap: 4px; }
+.icons svg { color: var(--muted); }
+.dim { color: var(--muted); }
+.eta { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
 .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #d14343; }
 .dot.on { background: var(--ok); }
 </style>

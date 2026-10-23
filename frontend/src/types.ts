@@ -1,6 +1,7 @@
 export interface DownloadPackage {
   uuid: number
   name: string
+  saveTo?: string
   enabled: boolean
   running: boolean
   finished: boolean
@@ -34,4 +35,31 @@ export interface DownloadLink {
   eta?: number
   bytesLoaded: number
   bytesTotal: number
+}
+
+export interface GrabberLink {
+  uuid: number
+  packageUUID: number
+  name: string
+  host?: string
+  url?: string
+  enabled: boolean
+  bytesTotal: number
+  availability: string
+}
+
+export interface GrabberPackage {
+  uuid: number
+  name: string
+  enabled: boolean
+  bytesTotal: number
+  childCount: number
+  hosts: string[]
+  saveTo?: string
+  links: GrabberLink[]
+}
+
+export interface GrabberState {
+  collecting: boolean
+  packages: GrabberPackage[]
 }

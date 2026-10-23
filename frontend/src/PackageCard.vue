@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ChevronRight, Folder, GripVertical, PowerOff } from 'lucide-vue-next'
+import { expandedDownloads } from './expandedState'
+import { clearHovered, changeTick, openMenu, setHovered, type Target } from './itemActions'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { formatBytes, formatEta, formatSpeed } from './format'
 import { reorderLocally, useDragReorder } from './dragReorder'
@@ -6,7 +9,7 @@ import type { DownloadLink, DownloadPackage } from './types'
 
 const props = defineProps<{ pkg: DownloadPackage }>()
 
-const expanded = ref(false)
+const expanded = ref(expandedDownloads.has(props.pkg.uuid))
 const packageDraggable = ref(false)
 const links = ref<DownloadLink[] | null>(null)
 const error = ref('')
@@ -34,6 +37,17 @@ const stateOf = (x: { finished: boolean; running: boolean; enabled: boolean }) =
   x.finished ? 'finished' : x.running ? 'running' : x.enabled ? 'idle' : 'disabled'
 const state = computed(() => stateOf(props.pkg))
 
+const pkgTarget = computed<Target>(() => ({
+  area: 'downloads',
+  kind: 'package',
+  id: props.pkg.uuid,
+  name: props.pkg.name,
+  enabled: props.pkg.enabled,
+  running: props.pkg.running,
+  saveTo: props.pkg.saveTo
+}))
+const linkTarget = (l: DownloadLink): Target => ({ area: 'downloads', kind: 'link', id: l.uuid, name: l.name, enabled: l.enabled, running: l.running })
+
 const loadLinks = async () => {
   try {
     const res = await fetch(`/api/packages/${props.pkg.uuid}/links`)
@@ -47,24 +61,43 @@ const loadLinks = async () => {
 }
 
 // Links are only fetched (and refreshed) while the package is expanded.
-watch(expanded, (open) => {
-  clearInterval(timer)
-  if (open) {
-    void loadLinks()
-    timer = setInterval(loadLinks, 3000)
-  }
-})
+watch(changeTick, () => expanded.value && void loadLinks())
+
+watch(
+  expanded,
+  (open) => {
+    clearInterval(timer)
+    if (open) {
+      expandedDownloads.add(props.pkg.uuid)
+      void loadLinks()
+      timer = setInterval(loadLinks, 3000)
+    } else {
+      expandedDownloads.delete(props.pkg.uuid)
+    }
+  },
+  { immediate: true }
+)
 onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <article class="package" :class="state" :draggable="packageDraggable" @mouseup="packageDraggable = false">
+  <article
+    class="package"
+    :class="state"
+    :draggable="packageDraggable"
+    @mouseup="packageDraggable = false"
+    @pointerenter="setHovered(pkgTarget)"
+    @pointerleave="clearHovered(pkgTarget)"
+    @contextmenu="openMenu($event, pkgTarget)"
+  >
     <button class="head" :aria-expanded="expanded" @click="expanded = !expanded">
-      <span class="grip" title="Drag to reorder" @mousedown.stop="packageDraggable = true" @touchstart.passive="packageDraggable = true">⠿</span>
-      <span class="chevron" :class="{ open: expanded }">▸</span>
+      <GripVertical :size="16" class="grip" title="Drag to reorder" @mousedown.stop="packageDraggable = true" @touchstart.passive="packageDraggable = true" />
+      <ChevronRight :size="16" class="chevron" :class="{ open: expanded }" />
       <h2>{{ pkg.name }}</h2>
-      <span class="badge">{{ state }}</span>
+      <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
+      <span v-else class="badge">{{ state }}</span>
     </button>
+    <div v-if="pkg.saveTo" class="path" :title="pkg.saveTo"><Folder :size="13" /><span>{{ pkg.saveTo }}</span></div>
     <div class="bar"><div class="fill" :style="{ width: percent + '%' }" /></div>
     <div class="row meta">
       <span>{{ formatBytes(pkg.bytesLoaded) }} / {{ formatBytes(pkg.bytesTotal) }} ({{ percent.toFixed(1) }}%)</span>
@@ -84,6 +117,9 @@ onUnmounted(() => clearInterval(timer))
         :class="[stateOf(l), drag.dropClass(l.uuid), { dragging: drag.dragId.value === l.uuid }]"
         :style="{ '--p': percentOf(l.bytesLoaded, l.bytesTotal) + '%' }"
         :title="l.name"
+        @pointerenter="setHovered(linkTarget(l))"
+        @pointerleave="setHovered(pkgTarget)"
+        @contextmenu.stop="openMenu($event, linkTarget(l))"
         draggable="true"
         @dragstart.stop="drag.onDragStart(l.uuid, $event)"
         @dragover.stop="drag.onDragOver(l.uuid, $event)"
@@ -126,9 +162,14 @@ onUnmounted(() => clearInterval(timer))
   cursor: pointer;
 }
 .head h2 { flex: 1; }
-.chevron { display: inline-block; transition: transform 0.15s; color: var(--muted); }
+.chevron { flex: none; transition: transform 0.15s; color: var(--muted); }
 .chevron.open { transform: rotate(90deg); }
 .toolbar { display: flex; justify-content: flex-end; }
+.path { display: flex; align-items: center; gap: 5px; margin: 2px 0 0 24px; color: var(--muted); font-size: 0.78rem; min-width: 0; }
+.path svg { flex: none; }
+.path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.75rem; }
+.package:not(.finished):not(.running).disabled { border-style: dashed; }
 .grip { cursor: grab; color: var(--muted); user-select: none; }
 .dragging { opacity: 0.4; }
 .drop-before { box-shadow: 0 -3px 0 var(--accent); }
