@@ -83,7 +83,9 @@ oder nur einzelnen auftritt. Danach entscheiden, ob sich die Extension lohnt.
 
 ## TODO
 
-- Own fallback icon for unknown hosts (JD returns a generic icon instead of an error).
-- Higher-resolution host icons (the JD favicon is only 16x16).
+- Real SVG icons for the most used hosts (favicons are fetched as ICO/PNG, 16px).
 - Show "open connections" metric in the status bar (API call still unknown).
 - Password protection (`UI_PASSWORD`) before exposing the UI outside the local network.
+- Optionally keep the bandwidth history in the backend (graph is empty after a reload).
+- Resolve more plugin-internal URLs (only YouTube has been checked).
+- Test the container upload (DLC etc.) and the write actions on the download list.

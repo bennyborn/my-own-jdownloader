@@ -3,6 +3,7 @@ import type { MyJdClient } from './myjd/client.js'
 export interface DownloadPackage {
   uuid: number
   name: string
+  saveTo?: string
   enabled: boolean
   running: boolean
   finished: boolean
@@ -95,7 +96,7 @@ export class DownloadsPoller {
       uuid: l.uuid ?? 0,
       name: l.name ?? '',
       host: l.host,
-      enabled: l.enabled ?? true,
+      enabled: l.enabled === true,
       running: l.running ?? false,
       finished: l.finished ?? false,
       skipped: l.skipped ?? false,
@@ -123,11 +124,6 @@ export class DownloadsPoller {
     await this.client.callDevice(this.deviceId, '/downloadsV2/moveLinks', [linkIds, afterLinkId, packageId])
   }
 
-  // Read-only: favicon of a host, served by the JDownloader itself (null if unknown).
-  getHostIcon(host: string): Promise<{ type: string; data: Buffer } | null> {
-    return this.client.callDeviceBinary(this.deviceId, '/contentV2/getFavIcon', [host])
-  }
-
   async refresh(): Promise<DownloadsSnapshot> {
     await this.poll()
     return this.snapshot
@@ -144,7 +140,7 @@ export class DownloadsPoller {
           {
             maxResults: -1,
             startAt: 0,
-            saveTo: false,
+            saveTo: true,
             bytesLoaded: true,
             bytesTotal: true,
             status: true,
@@ -161,7 +157,8 @@ export class DownloadsPoller {
       const packages: DownloadPackage[] = raw.map((p) => ({
         uuid: p.uuid ?? 0,
         name: p.name ?? '',
-        enabled: p.enabled ?? true,
+        saveTo: p.saveTo,
+        enabled: p.enabled === true,
         running: p.running ?? false,
         finished: p.finished ?? false,
         status: p.status,

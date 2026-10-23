@@ -18,13 +18,15 @@ interface Session {
 }
 
 // The JDownloader is in live use: calls that could interrupt or delete running downloads
+// (the linkgrabber is deliberately not restricted)
 // are blocked unless explicitly enabled via MYJD_ALLOW_DISRUPTIVE=true.
 const DISRUPTIVE_ACTIONS = [
   /^\/downloadcontroller\/(stop|pause|forceDownload)/i,
-  /^\/downloadsV2\/(remove|cleanup|disable|reset|stop|set)/i,
+  /^\/downloadsV2\/(remove|cleanup|disable|reset|stop)/i,
+  // setEnabled / setDownloadDirectory are allowed, ListOps refuses them for running downloads
+  /^\/downloadsV2\/set(?!Enabled$|DownloadDirectory$)/i,
   // moving is only allowed for reordering (movePackages, moveLinks); the routes restrict it further
   /^\/downloadsV2\/move(?!Packages$|Links$)/i,
-  /^\/linkgrabberv2\/(remove|clear|cleanup)/i,
   /^\/(update|system)\/(?!getSystemInfos)/i,
   /^\/config\/set/i
 ]
@@ -126,23 +128,6 @@ export class MyJdClient {
     }
     const data = JSON.parse(decrypt(text, session.deviceEncryptionToken))
     return data.data as T
-  }
-
-  // For endpoints that answer with raw, unencrypted binary data (e.g. /contentV2/getFavIcon).
-  async callDeviceBinary(deviceId: string, action: string, params: unknown[] = []): Promise<{ type: string; data: Buffer } | null> {
-    const session = this.requireSession()
-    const body = encrypt(
-      JSON.stringify({ url: action, params: params.map((p) => JSON.stringify(p)), rid: this.nextRid(), apiVer: 1 }),
-      session.deviceEncryptionToken
-    )
-    const res = await fetch(`${API_URL}/t_${session.token}_${deviceId}${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/aesjson-jd; charset=utf-8' },
-      body
-    })
-    const type = res.headers.get('content-type') ?? ''
-    if (!res.ok || !type.startsWith('image/')) return null
-    return { type, data: Buffer.from(await res.arrayBuffer()) }
   }
 
   private requireSession(): Session {

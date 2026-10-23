@@ -5,6 +5,8 @@ services:
       - "20031:20031"
     env_file: .env
     restart: unless-stopped
+    volumes:
+      - icon_cache:/app/data
 
   # Development tooling: all npm/node usage happens in this container, never on the host.
   # Usage: docker compose run --rm dev npm install
@@ -25,6 +27,7 @@ services:
       - "20031:20031"
 
 volumes:
+  icon_cache:
   node_modules:
   backend_node_modules:
   frontend_node_modules:
