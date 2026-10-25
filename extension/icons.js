@@ -13,7 +13,12 @@ const ICONS = {
   "circle-alert": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\"/><line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\"/>",
   "loader-circle": "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>",
   "external-link": "<path d=\"M15 3h6v6\"/><path d=\"M10 14 21 3\"/><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"/>",
-  "x": "<path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/>"
+  "x": "<path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/>",
+  "server": "<rect width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"/><rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"6\" x2=\"6.01\" y1=\"6\" y2=\"6\"/><line x1=\"6\" x2=\"6.01\" y1=\"18\" y2=\"18\"/>",
+  "server-off": "<path d=\"M7 2h13a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-5\"/><path d=\"M10 10 2.5 2.5C2 2 2 2.5 2 5v3a2 2 0 0 0 2 2h6z\"/><path d=\"M22 17v-1a2 2 0 0 0-2-2h-1\"/><path d=\"M4 14a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16.5l1-.5.5.5-8-8H4z\"/><path d=\"M6 18h.01\"/><path d=\"m2 2 20 20\"/>",
+  "chevron-down": "<path d=\"m6 9 6 6 6-6\"/>",
+  "check": "<path d=\"M20 6 9 17l-5-5\"/>",
+  "circle-help": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"/><path d=\"M12 17h.01\"/>"
 }
 
 export const icon = (name, size = 14, strokeWidth = 2) => {

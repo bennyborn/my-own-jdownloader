@@ -1,4 +1,4 @@
-import { api, ApiError, getSettings, hostIcon } from './api.js'
+import { api, ApiError, getSettings, hostIcon, withDevice } from './api.js'
 import { icon } from './icons.js'
 
 const WINDOW_MS = 5 * 60 * 1000
@@ -83,34 +83,36 @@ const drawGraph = (canvas, samples) => {
   ctx.stroke()
 }
 
-// One card per device. The backend serves a single device so far; the structure is ready for several.
+// One card per device (offline ones too, greyed out).
 const devicesEl = document.getElementById('devices')
-// One canvas that survives the card being rebuilt on every update, so the animation never restarts.
-const graph = el('canvas', { ariaHidden: 'true' })
-const samples = new Map() // device name -> [{ t, v }]
-let clockOffset = 0
+// One canvas per device that survives the card being rebuilt on every update, so the animation never restarts.
+const graphs = new Map() // device id -> canvas
+const graphOf = (id) => graphs.get(id) ?? graphs.set(id, el('canvas', { ariaHidden: 'true' })).get(id)
+const samples = new Map() // device id -> [{ t, v }]
 
-const loadHistory = async () => {
+const loadHistory = async (id) => {
   try {
-    const data = await api('/api/speed-history')
-    clockOffset = Date.now() - data.now
-    samples.set('*', data.samples.map((s) => ({ t: s.t + clockOffset, v: s.v })))
+    const data = await api(withDevice('/api/speed-history', id))
+    const offset = Date.now() - data.now
+    samples.set(id, data.samples.map((s) => ({ t: s.t + offset, v: s.v })))
   } catch {
     /* the graph then starts empty */
   }
 }
 
 const deviceCard = async (d, backendUrl) => {
-  const history = samples.get('*') ?? []
+  const online = d.status === 'ONLINE'
+  if (!samples.has(d.id)) await loadHistory(d.id)
+  const history = samples.get(d.id) ?? []
   history.push({ t: Date.now(), v: d.downloads.speed })
-  samples.set('*', history.filter((s) => s.t >= Date.now() - WINDOW_MS - 30000))
+  samples.set(d.id, history.filter((s) => s.t >= Date.now() - WINDOW_MS - 30000))
 
-  const open = el('button', { className: 'primary', textContent: 'Open', title: 'Open the web interface' })
+  const open = el('button', { className: 'primary', textContent: 'Open', title: 'Open the web interface for this device' })
   open.addEventListener('click', () => {
-    chrome.tabs.create({ url: backendUrl })
+    chrome.tabs.create({ url: `${backendUrl}/#downloads?device=${encodeURIComponent(d.id)}` })
     window.close()
   })
-  const head = el('div', { className: 'head' }, el('span', { className: 'dot' + (d.status === 'ONLINE' ? ' online' : ''), title: d.status }), el('span', { className: 'name', textContent: d.name, title: d.name }), open)
+  const head = el('div', { className: 'head' }, el('span', { className: 'dot' + (online ? ' online' : ''), title: d.status }), el('span', { className: 'name', textContent: d.name, title: d.name }), open)
   const item = (name, text, props = {}) => el('span', { className: 'item num', ...props }, icon(name), text)
   const running = d.downloads.running > 0
   const body = running
@@ -122,7 +124,7 @@ const deviceCard = async (d, backendUrl) => {
           item('clock', formatLongEta(d.downloads.eta), { title: 'Finished in' })
         )
       ]
-    : [el('div', { className: 'muted', textContent: d.status === 'ONLINE' ? 'No downloads running' : 'Not reachable' })]
+    : [el('div', { className: 'muted', textContent: online ? 'No downloads running' : 'Offline' })]
   const queue = el(
     'div',
     { className: 'queue' },
@@ -131,7 +133,7 @@ const deviceCard = async (d, backendUrl) => {
     item('link-2', String(d.queue.links), { title: 'Links' }),
     running ? el('span', { className: 'item num size', title: 'Loaded / total size' }, icon('hard-drive'), formatBytes(d.downloads.bytesLoaded), el('span', { className: 'muted', textContent: ` / ${formatBytes(d.downloads.bytesTotal)}` })) : ''
   )
-  const card = el('div', { className: 'card' }, graph, head, ...body, queue)
+  const card = el('div', { className: 'card' + (online ? '' : ' offline') }, graphOf(d.id), head, ...body, queue)
   return card
 }
 
@@ -149,17 +151,29 @@ const errorState = (e) => {
   return el('div', { className: 'empty' }, icon(name, 56, 1.25), el('div', { className: 'title', textContent: title }), el('div', { className: 'sub', textContent: sub }))
 }
 
+// Title and settings button stay hidden while the first answer is awaited (only the logo and "Connecting…" show).
+const bar = document.getElementById('bar')
 const renderDevices = async () => {
   try {
-    const [d, { backendUrl }] = await Promise.all([api('/api/device'), getSettings()])
-    devicesEl.replaceChildren(await deviceCard(d, backendUrl))
+    const [list, { backendUrl }] = await Promise.all([api('/api/devices'), getSettings()])
+    const details = await Promise.all(list.map((d) => api(withDevice('/api/device', d.id))))
+    // The default device first, then the others by name; offline devices stay at the end.
+    const order = (d) => [d.status === 'ONLINE' ? 0 : 1, list.find((x) => x.id === d.id)?.default ? 0 : 1, d.name]
+    details.sort((a, b) => {
+      const [x, y] = [order(a), order(b)]
+      return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2])
+    })
+    devicesEl.replaceChildren(...(await Promise.all(details.map((d) => deviceCard(d, backendUrl)))))
+    for (const id of graphs.keys()) if (!list.some((d) => d.id === id)) graphs.delete(id)
   } catch (e) {
     devicesEl.replaceChildren(errorState(e))
   }
+  bar.hidden = false
 }
 
 const list = document.getElementById('list')
 const captchasSection = document.getElementById('captchas')
+const devicesTitle = document.getElementById('devices-title')
 document.getElementById('options').addEventListener('click', () => chrome.runtime.openOptionsPage())
 
 // Captcha rows are only rebuilt when the set of jobs changes; the countdown is updated in place every
@@ -183,6 +197,7 @@ const renderCaptchas = async () => {
     captchaJobs = (await api('/api/captcha')).map((j) => ({ ...j, fetchedAt }))
     // The section only exists while a captcha is waiting.
     captchasSection.hidden = !captchaJobs.length
+    devicesTitle.hidden = !captchaJobs.length // the heading is only needed to tell the two lists apart
     const key = captchaJobs.map((j) => j.id).join(',')
     if (key !== captchaKey) {
       captchaKey = key
@@ -200,11 +215,11 @@ const renderCaptchas = async () => {
           button.addEventListener('click', async () => {
             // Pictures are typed off in the web interface, token captchas are solved on the hoster's page.
             if (j.kind === 'image') {
-              chrome.tabs.create({ url: backendUrl })
+              chrome.tabs.create({ url: `${backendUrl}/#downloads?device=${encodeURIComponent(j.device)}` })
               window.close()
               return
             }
-            const res = await chrome.runtime.sendMessage({ type: 'open', id: j.id })
+            const res = await chrome.runtime.sendMessage({ type: 'open', id: j.id, device: j.device })
             if (res?.ok === false) host.textContent = res.error
             else window.close()
           })
@@ -215,17 +230,17 @@ const renderCaptchas = async () => {
     }
     updateCountdowns()
   } catch {
-    captchasSection.hidden = true // the device card already shows that the backend is unreachable
+    captchasSection.hidden = true
+    devicesTitle.hidden = true // the device card already shows that the backend is unreachable
   }
 }
 
 const frame = () => {
   requestAnimationFrame(frame)
-  drawGraph(graph, samples.get('*') ?? [])
+  for (const [id, canvas] of graphs) drawGraph(canvas, samples.get(id) ?? [])
 }
 requestAnimationFrame(frame)
 
-await loadHistory()
 void renderDevices()
 void renderCaptchas()
 setInterval(renderDevices, 3000)

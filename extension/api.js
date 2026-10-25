@@ -21,6 +21,17 @@ export const hostIcon = (host) => {
   return iconCache.get(host)
 }
 
+// Adds the JDownloader device to an API path (no device: the backend's default device).
+export const withDevice = (path, device) => (device ? `${path}${path.includes('?') ? '&' : '?'}device=${encodeURIComponent(device)}` : path)
+
+// The device Click'n'Load goes to ('' = the backend's default device); chosen in the settings.
+// 'ask' (choose on the result card every time) is not a device; callers that need one treat it as the default.
+export const getCnlDevice = async () => (await chrome.storage.local.get('cnlDevice')).cnlDevice ?? ''
+export const getCnlTarget = async () => {
+  const device = await getCnlDevice()
+  return device === 'ask' ? '' : device
+}
+
 // kind: 'config' (no backend URL), 'network' (not reachable), 'auth' (wrong password), 'http' (other)
 export class ApiError extends Error {
   constructor(message, kind) {

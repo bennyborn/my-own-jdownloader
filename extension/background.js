@@ -1,4 +1,4 @@
-import { api, getSettings } from './api.js'
+import { api, getCnlDevice, getCnlTarget, getSettings, withDevice } from './api.js'
 
 // Badge with the number of open captchas. Alarms are limited to 30 s in MV3, which is fine here
 // (a job stays open for 10 minutes); the popup refreshes on its own.
@@ -9,12 +9,16 @@ const notifyNew = async (jobs) => {
   const [{ notify }, { announced = [] }] = await Promise.all([chrome.storage.local.get('notify'), chrome.storage.session.get('announced')])
   await chrome.storage.session.set({ announced: jobs.map((j) => j.id) })
   if (notify === false) return
-  for (const j of jobs.filter((job) => !announced.includes(job.id))) {
+  const fresh = jobs.filter((job) => !announced.includes(job.id))
+  // The device is only worth mentioning when there are several.
+  const several = fresh.length > 0 && (await api('/api/devices').catch(() => [])).length > 1
+  for (const j of fresh) {
+    const where = several && j.deviceName ? ` (${j.deviceName})` : ''
     chrome.notifications.create(`captcha-${j.id}`, {
       type: 'basic',
       iconUrl: 'icons/icon128.png',
       title: 'Captcha waiting',
-      message: j.kind === 'image' ? `${j.hoster}: answer it in the web interface` : `${j.hoster}: click to solve it`,
+      message: j.kind === 'image' ? `${j.hoster}${where}: answer it in the web interface` : `${j.hoster}${where}: click to solve it`,
       requireInteraction: true
     })
   }
@@ -27,10 +31,10 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
   try {
     const job = (await api('/api/captcha')).find((j) => j.id === id)
     // Everything but a picture is solved on the hoster's page (no kind: older backend).
-    if (job && job.kind !== 'image') await openCaptcha(id)
+    if (job && job.kind !== 'image') await openCaptcha(id, job.device)
     else {
       const { backendUrl } = await getSettings()
-      if (backendUrl) await chrome.tabs.create({ url: backendUrl })
+      if (backendUrl) await chrome.tabs.create({ url: job?.device ? `${backendUrl}/#downloads?device=${encodeURIComponent(job.device)}` : backendUrl })
     }
   } catch {
     /* the captcha is gone or the backend is not reachable: nothing to open */
@@ -53,10 +57,10 @@ chrome.runtime.onStartup.addListener(() => chrome.alarms.create('poll', { period
 chrome.alarms.onAlarm.addListener((alarm) => alarm.name === 'poll' && void refreshBadge())
 
 // Opens the hoster's real page; the content script there recognises the marker in the hash.
-const openCaptcha = async (id) => {
-  const job = await api(`/api/captcha/${id}`)
+const openCaptcha = async (id, device) => {
+  const job = await api(withDevice(`/api/captcha/${id}`, device))
   const url = new URL(job.siteUrl)
-  url.hash = `myjd-captcha=${id}`
+  url.hash = `myjd-captcha=${id}${device ? `&device=${encodeURIComponent(device)}` : ''}`
   return chrome.tabs.create({ url: url.toString() })
 }
 
@@ -148,14 +152,32 @@ const renderInPage = (job) => {
 
 // Click'n'Load: the page's links go to the backend; the page's frame 0 shows the outcome.
 const recentCnl = new Map() // fingerprint -> time; pages sometimes send the same links twice
-const sendCnl = async (payload, tabId) => {
+// device: chosen on the result card; otherwise the setting decides ("ask": the card offers the devices first).
+const sendCnl = async (payload, tabId, device) => {
+  let only // the single online device, when "ask" has nothing to ask
   const fingerprint = [payload.crypted ?? payload.urls, payload.jk ?? '', payload.packageName ?? ''].join('|')
-  if (Date.now() - (recentCnl.get(fingerprint) ?? 0) < 15000) return
-  recentCnl.set(fingerprint, Date.now())
+  if (device === undefined) {
+    if (Date.now() - (recentCnl.get(fingerprint) ?? 0) < 15000) return
+    recentCnl.set(fingerprint, Date.now())
+    if ((await getCnlDevice()) === 'ask') {
+      // Only devices that answer count: with one of them there is nothing to choose, with none the default fails visibly.
+      const all = await api('/api/devices').catch(() => [])
+      const online = all.filter((d) => d.online !== false)
+      if (online.length > 1 && tabId !== undefined) {
+        chrome.tabs.sendMessage(tabId, { type: 'cnl-choose', devices: all, payload: { packageName: payload.packageName, source: payload.source, popup: payload.popup } }, { frameId: 0 }).catch(() => {})
+        return
+      }
+      if (online.length === 1) only = online[0].id
+    }
+  }
+  const target = device ?? only ?? (await getCnlTarget())
   let result
   try {
-    await api('/api/linkgrabber/cnl', { method: 'POST', body: JSON.stringify(payload) })
-    result = { ok: true }
+    await api('/api/linkgrabber/cnl', { method: 'POST', body: JSON.stringify({ ...payload, device: target || undefined }) })
+    // The device is only worth naming when there are several.
+    const devices = await api('/api/devices').catch(() => [])
+    const used = devices.find((d) => (target ? d.id === target : d.default))
+    result = { ok: true, device: used?.id ?? target, deviceName: devices.length > 1 ? used?.name : undefined }
   } catch (e) {
     result = { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
@@ -173,11 +195,12 @@ chrome.storage.onChanged.addListener((changes) => changes.cnl && void applyCnlSe
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'cnl') {
-    void sendCnl(msg.payload, sender.tab?.id)
+    void sendCnl(msg.payload, sender.tab?.id, msg.device)
     return false
   }
   if (msg.type === 'cnl-stats') {
-    api('/api/linkgrabber')
+    Promise.resolve(msg.device ?? getCnlTarget())
+      .then((device) => api(withDevice('/api/linkgrabber', device)))
       .then((d) => {
         const links = d.packages.flatMap((p) => p.links)
         sendResponse({
@@ -201,21 +224,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true
   }
   if (msg.type === 'open-linkgrabber') {
-    getSettings().then(({ backendUrl }) => backendUrl && chrome.tabs.create({ url: `${backendUrl}/#linkgrabber` }))
+    Promise.all([getSettings(), msg.device ?? getCnlTarget()]).then(([{ backendUrl }, device]) => backendUrl && chrome.tabs.create({ url: `${backendUrl}/#linkgrabber${device ? `?device=${encodeURIComponent(device)}` : ''}` }))
     return false
   }
   ;(async () => {
     if (msg.type === 'open') {
-      await openCaptcha(msg.id)
+      await openCaptcha(msg.id, msg.device)
       return { ok: true }
     }
     if (msg.type === 'render' && sender.tab?.id) {
-      const job = await api(`/api/captcha/${msg.id}`)
+      const job = await api(withDevice(`/api/captcha/${msg.id}`, msg.device))
       await chrome.scripting.executeScript({ target: { tabId: sender.tab.id }, world: 'MAIN', func: renderInPage, args: [job] })
       return { ok: true }
     }
     if (msg.type === 'solve') {
-      await api(`/api/captcha/${msg.id}/solve`, { method: 'POST', body: JSON.stringify({ token: msg.token }) })
+      await api(withDevice(`/api/captcha/${msg.id}/solve`, msg.device), { method: 'POST', body: JSON.stringify({ token: msg.token }) })
       if (sender.tab?.id) setTimeout(() => chrome.tabs.remove(sender.tab.id), 1500)
       void refreshBadge()
       return { ok: true }

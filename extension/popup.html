@@ -12,11 +12,13 @@
   .cards { display: grid; gap: 10px; }
   .card { position: relative; overflow: hidden; display: grid; gap: 8px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
   .empty { display: grid; justify-items: center; gap: 4px; padding: 28px 12px 24px; color: var(--muted); text-align: center; }
-  .empty svg { margin-bottom: 8px; }
+  .empty svg, .empty img { margin-bottom: 8px; }
+  .bar[hidden] { display: none; }
   .empty .title { color: var(--text); font-size: 1.05rem; font-weight: 600; }
   .empty .sub { font-size: 12px; overflow-wrap: anywhere; }
   .card canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.3; pointer-events: none; }
   .card > :not(canvas) { position: relative; }
+  .card.offline { opacity: 0.6; }
   .head { display: flex; align-items: center; gap: 8px; }
   .head .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
@@ -42,7 +44,7 @@
   .icon { display: inline-flex; padding: 5px; border-color: transparent; background: none; color: var(--muted); }
   .icon:hover { color: var(--text); background: var(--hover); }
 </style>
-<div class="bar">
+<div class="bar" id="bar" hidden>
   <span class="title">My Own JDownloader</span>
   <button type="button" id="options" class="icon" title="Settings" aria-label="Settings">
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
@@ -52,5 +54,8 @@
   <h1>Captchas</h1>
   <div id="list" class="cards"></div>
 </section>
-<div id="devices" class="cards"><div class="muted">Connecting…</div></div>
+<section>
+  <h1 id="devices-title" hidden>Devices</h1>
+  <div id="devices" class="cards"><div class="empty"><img src="logo-outline.svg" alt="" width="112" height="110" /><div class="title">Connecting…</div></div></div>
+</section>
 <script src="popup.js" type="module"></script>

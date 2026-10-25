@@ -1,13 +1,14 @@
-// Runs on every page but only acts on the marker "#myjd-captcha=<id>" that the extension itself sets.
+// Runs on every page but only acts on the marker "#myjd-captcha=<id>&device=<device id>" that the extension itself sets.
 ;(() => {
-  const match = location.hash.match(/^#myjd-captcha=(\d+)$/)
+  const match = location.hash.match(/^#myjd-captcha=(\d+)(?:&device=([\w-]+))?$/)
   if (!match) return
   const id = Number(match[1])
+  const device = match[2] ?? ''
 
   // The page-world widget reports its token by postMessage; only this script talks to the extension.
   window.addEventListener('message', async (e) => {
     if (e.source !== window || e.data?.source !== 'myjd-captcha' || e.data.id !== id) return
-    const res = await chrome.runtime.sendMessage({ type: 'solve', id, token: e.data.token })
+    const res = await chrome.runtime.sendMessage({ type: 'solve', id, device, token: e.data.token })
     window.postMessage({ source: 'myjd-result', id, ok: res?.ok === true, error: res?.error }, location.origin)
   })
 
@@ -17,5 +18,5 @@
   document.documentElement.style.cssText = `visibility:hidden;background:${dark ? '#0d1117' : '#f6f8fa'}`
   const reveal = () => (document.documentElement.style.cssText = '')
 
-  chrome.runtime.sendMessage({ type: 'render', id }).then((res) => res?.ok === false && reveal(), reveal)
+  chrome.runtime.sendMessage({ type: 'render', id, device }).then((res) => res?.ok === false && reveal(), reveal)
 })()
