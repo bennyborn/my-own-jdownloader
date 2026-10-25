@@ -5,6 +5,10 @@ export interface ConfirmOptions {
   message: string
   confirmLabel?: string
   danger?: boolean
+  // Information only: a single OK button.
+  hideCancel?: boolean
+  // Optional checkbox; the caller reads `checked` after the dialog resolved.
+  option?: { label: string; checked: boolean }
 }
 
 export const confirmState = ref<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null)
@@ -20,3 +24,6 @@ export const answerConfirm = (ok: boolean) => {
   confirmState.value?.resolve(ok)
   confirmState.value = null
 }
+
+// Shows a message with a single OK button.
+export const showInfo = (title: string, message: string): Promise<boolean> => askConfirm({ title, message, confirmLabel: 'OK', hideCancel: true })

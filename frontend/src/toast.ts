@@ -1,0 +1,21 @@
+import { ref } from 'vue'
+
+export interface Toast {
+  id: number
+  message: string
+}
+
+export const toasts = ref<Toast[]>([])
+let nextId = 1
+
+export const dismissToast = (id: number) => (toasts.value = toasts.value.filter((t) => t.id !== id))
+
+// A progress toast stays as long as the work is going on (null hides it); it cannot be dismissed by hand.
+export const progress = ref<string | null>(null)
+
+// Shows an error toast; it disappears on click or after a time that grows with the message length.
+export const showError = (message: string) => {
+  const id = nextId++
+  toasts.value = [...toasts.value, { id, message }]
+  setTimeout(() => dismissToast(id), Math.min(15000, 4000 + message.length * 60))
+}

@@ -46,7 +46,7 @@ const toggle = () => {
   justify-content: space-between;
   flex: none;
   width: 24px;
-  height: 44px;
+  height: 40px;
   padding: 5px 0;
   box-sizing: border-box;
   background: var(--card);
@@ -67,5 +67,5 @@ const toggle = () => {
   opacity: 0.25;
   transition: transform 0.2s;
 }
-.knob.dark { transform: translateY(20px); }
+.knob.dark { transform: translateY(17px); }
 </style>

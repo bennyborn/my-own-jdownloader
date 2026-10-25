@@ -21,8 +21,11 @@ watch(confirmState, async (state) => {
         <h3>{{ confirmState.title }}</h3>
       </div>
       <p>{{ confirmState.message }}</p>
+      <label v-if="confirmState.option" class="option">
+        <input v-model="confirmState.option.checked" type="checkbox" /> {{ confirmState.option.label }}
+      </label>
       <div class="actions">
-        <button type="button" @click="answerConfirm(false)">Cancel</button>
+        <button v-if="!confirmState.hideCancel" type="button" @click="answerConfirm(false)">Cancel</button>
         <button ref="confirmButton" type="button" class="primary" :class="{ danger: confirmState.danger }" @click="answerConfirm(true)">
           {{ confirmState.confirmLabel ?? 'OK' }}
         </button>
@@ -37,7 +40,8 @@ watch(confirmState, async (state) => {
 .head { display: flex; align-items: center; gap: 10px; }
 .warn { color: #d14343; }
 h3 { margin: 0; font-size: 1rem; }
-p { margin: 0; color: var(--muted); overflow-wrap: anywhere; line-height: 1.5; }
+p { margin: 0; color: var(--muted); overflow-wrap: anywhere; line-height: 1.5; white-space: pre-line; }
+.option { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 button { padding: 7px 16px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; cursor: pointer; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

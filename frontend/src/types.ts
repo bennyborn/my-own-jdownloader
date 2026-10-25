@@ -12,6 +12,7 @@ export interface DownloadPackage {
   bytesTotal: number
   childCount: number
   hosts: string[]
+  activeHosts: string[]
 }
 
 export interface DownloadsSnapshot {

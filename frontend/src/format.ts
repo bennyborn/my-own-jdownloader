@@ -17,6 +17,16 @@ export const formatEta = (seconds?: number): string => {
   return `${s}s`
 }
 
+// Time left as mm:ss (h:mm:ss from an hour on), e.g. for captcha timeouts.
+export const formatCountdown = (ms: number): string => {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = String(total % 60).padStart(2, '0')
+  const mm = String(m).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${s}` : `${mm}:${s}`
+}
+
 // Long-range ETA like the original web interface, e.g. "5d:17h:12m".
 export const formatLongEta = (seconds: number | null): string => {
   if (seconds === null || !isFinite(seconds) || seconds <= 0) return '–'
