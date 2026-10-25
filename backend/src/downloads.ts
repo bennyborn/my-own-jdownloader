@@ -136,7 +136,8 @@ export class DownloadsPoller {
   // Reorders packages in the download list. afterPackageId -1 means "to the top".
   // Only changes the order; running downloads are not touched.
   async movePackages(packageIds: number[], afterPackageId: number): Promise<void> {
-    await this.client.callDevice(this.deviceId, '/downloadsV2/movePackages', [packageIds, afterPackageId])
+    // One call per package: the order of several ids in a single call is up to JD.
+    for (let i = 0; i < packageIds.length; i++) await this.client.callDevice(this.deviceId, '/downloadsV2/movePackages', [[packageIds[i]], i === 0 ? afterPackageId : packageIds[i - 1]])
   }
 
   // Reorders links inside ONE package (never moves them to another package).
@@ -146,7 +147,8 @@ export class DownloadsPoller {
     if (!linkIds.every((id) => known.has(id)) || (afterLinkId !== -1 && !known.has(afterLinkId))) {
       throw new Error('Links must all belong to the given package')
     }
-    await this.client.callDevice(this.deviceId, '/downloadsV2/moveLinks', [linkIds, afterLinkId, packageId])
+    // One call per link: the order of several ids in a single call is up to JD.
+    for (let i = 0; i < linkIds.length; i++) await this.client.callDevice(this.deviceId, '/downloadsV2/moveLinks', [[linkIds[i]], i === 0 ? afterLinkId : linkIds[i - 1], packageId])
   }
 
   async refresh(): Promise<DownloadsSnapshot> {

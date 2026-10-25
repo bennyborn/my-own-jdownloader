@@ -3,8 +3,13 @@ import { ref } from 'vue'
 export type DropPosition = 'before' | 'after'
 
 // Drag & drop reordering for a list of items identified by numeric ids.
-// onMove receives the dragged id and the id it should be placed after (-1 = top).
-export const useDragReorder = (getIds: () => number[], onMove: (id: number, afterId: number) => void) => {
+// onMove receives the ids to move (in list order) and the id they should be placed after (-1 = top).
+// getGroup returns the ids that travel along with the dragged one (the marked items when it is marked).
+export const useDragReorder = (
+  getIds: () => number[],
+  onMove: (ids: number[], afterId: number) => void,
+  getGroup?: (id: number) => number[]
+) => {
   const dragId = ref<number | null>(null)
   const overId = ref<number | null>(null)
   const position = ref<DropPosition>('before')
@@ -27,12 +32,15 @@ export const useDragReorder = (getIds: () => number[], onMove: (id: number, afte
     event.preventDefault()
     const moving = dragId.value
     const target = overId.value
-    if (moving !== null && target !== null && moving !== target) {
-      const rest = getIds().filter((id) => id !== moving)
+    const group = moving === null ? [] : getGroup?.(moving) ?? [moving]
+    const set = new Set(group.includes(moving!) ? group : [moving!])
+    if (moving !== null && target !== null && !set.has(target)) {
+      const all = getIds()
+      const rest = all.filter((id) => !set.has(id))
       const targetIndex = rest.indexOf(target)
       const insertAt = position.value === 'before' ? targetIndex : targetIndex + 1
       const after = insertAt === 0 ? -1 : rest[insertAt - 1]
-      onMove(moving, after)
+      onMove(all.filter((id) => set.has(id)), after)
     }
     onDragEnd()
   }
@@ -49,11 +57,12 @@ export const useDragReorder = (getIds: () => number[], onMove: (id: number, afte
 }
 
 // Local (optimistic) reorder, the next live update from the server replaces it with the real order.
-export const reorderLocally = <T>(items: T[], getId: (item: T) => number, id: number, afterId: number): T[] => {
-  const moving = items.find((item) => getId(item) === id)
-  if (!moving) return items
-  const rest = items.filter((item) => getId(item) !== id)
+export const reorderLocally = <T>(items: T[], getId: (item: T) => number, ids: number[], afterId: number): T[] => {
+  const set = new Set(ids)
+  const moving = items.filter((item) => set.has(getId(item)))
+  if (!moving.length) return items
+  const rest = items.filter((item) => !set.has(getId(item)))
   const at = afterId === -1 ? 0 : rest.findIndex((item) => getId(item) === afterId) + 1
-  rest.splice(at, 0, moving)
+  rest.splice(at, 0, ...moving)
   return rest
 }

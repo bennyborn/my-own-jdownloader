@@ -14,7 +14,7 @@ import VariantDialog from './VariantDialog.vue'
 import { actionError, changeTick, movedTick, choosingFolder, renaming } from './itemActions'
 import { useDownloads } from './useDownloads'
 import { Download, FileDown, Link2, Settings } from 'lucide-vue-next'
-import { expandedDownloads, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
+import { expandedDownloads, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages, selectedPackagesDevice } from './expandedState'
 import { useFileDrop } from './useFileDrop'
 import ToastHost from './ToastHost.vue'
 import { progress, showError } from './toast'
@@ -170,14 +170,14 @@ const onAdded = async (device?: string) => {
 
 const dropping = useFileDrop(onAdded, showError, () => grabber.cancelBoost())
 
-const movePackage = async (device: string, id: number, afterId: number) => {
+const movePackage = async (device: string, ids: number[], afterId: number) => {
   const snap = snapshots.value[device]
-  if (snap) snapshots.value = { ...snapshots.value, [device]: { ...snap, packages: reorderLocally(snap.packages, (p) => p.uuid, id, afterId) } }
+  if (snap) snapshots.value = { ...snapshots.value, [device]: { ...snap, packages: reorderLocally(snap.packages, (p) => p.uuid, ids, afterId) } }
   try {
     const res = await fetch(withDevice('/api/packages/move', device), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ packageIds: [id], afterPackageId: afterId })
+      body: JSON.stringify({ packageIds: ids, afterPackageId: afterId })
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
   } catch (e) {
@@ -190,7 +190,8 @@ const drags = new Map<string, ReturnType<typeof useDragReorder>>()
 const dragFor = (device: string) => {
   let drag = drags.get(device)
   if (!drag) {
-    drag = useDragReorder(() => (snapshots.value[device]?.packages ?? []).map((p) => p.uuid), (id, afterId) => movePackage(device, id, afterId))
+    drag = useDragReorder(() => (snapshots.value[device]?.packages ?? []).map((p) => p.uuid), (ids, afterId) => movePackage(device, ids, afterId),
+      (id) => (selectedPackagesDevice.value === device && selectedDownloadPackages.value.has(id) ? [...selectedDownloadPackages.value] : [id]))
     drags.set(device, drag)
   }
   return drag

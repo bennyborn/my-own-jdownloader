@@ -66,13 +66,13 @@ const onHeadClick = (e: MouseEvent) => {
 }
 const links = ref<DownloadLink[] | null>(null)
 const error = ref('')
-const moveLink = async (id: number, afterId: number) => {
-  if (links.value) links.value = reorderLocally(links.value, (l) => l.uuid, id, afterId)
+const moveLink = async (ids: number[], afterId: number) => {
+  if (links.value) links.value = reorderLocally(links.value, (l) => l.uuid, ids, afterId)
   try {
     const res = await fetch(withDevice(`/api/packages/${props.pkg.uuid}/links/move`, props.device), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ linkIds: [id], afterLinkId: afterId })
+      body: JSON.stringify({ linkIds: ids, afterLinkId: afterId })
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     error.value = ''
@@ -80,7 +80,12 @@ const moveLink = async (id: number, afterId: number) => {
     showError(`Moving failed: ${e instanceof Error ? e.message : e}`)
   }
 }
-const drag = useDragReorder(() => (links.value ?? []).map((l) => l.uuid), moveLink)
+// Dragging a marked link moves all marked links of this package.
+const drag = useDragReorder(
+  () => (links.value ?? []).map((l) => l.uuid),
+  moveLink,
+  (id) => (selectedDownloadLinks.value.has(id) ? (links.value ?? []).map((l) => l.uuid).filter((x) => selectedDownloadLinks.value.has(x)) : [id])
+)
 
 let timer: ReturnType<typeof setInterval> | undefined
 

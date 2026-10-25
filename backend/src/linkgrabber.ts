@@ -164,7 +164,8 @@ export class Linkgrabber {
 
   // Reorders packages in the linkgrabber. afterPackageId -1 means "to the top".
   async movePackages(packageIds: number[], afterPackageId: number): Promise<void> {
-    await this.call('/linkgrabberv2/movePackages', [packageIds, afterPackageId])
+    // One call per package: the order of several ids in a single call is up to JD.
+    for (let i = 0; i < packageIds.length; i++) await this.call('/linkgrabberv2/movePackages', [[packageIds[i]], i === 0 ? afterPackageId : packageIds[i - 1]])
   }
 
   // Reorders links inside ONE package (never moves them to another package).
@@ -173,7 +174,8 @@ export class Linkgrabber {
     if (!linkIds.every((id) => known.has(id)) || (afterLinkId !== -1 && !known.has(afterLinkId))) {
       throw new Error('Links must all belong to the given package')
     }
-    await this.call('/linkgrabberv2/moveLinks', [linkIds, afterLinkId, packageId])
+    // One call per link: the order of several ids in a single call is up to JD.
+    for (let i = 0; i < linkIds.length; i++) await this.call('/linkgrabberv2/moveLinks', [[linkIds[i]], i === 0 ? afterLinkId : linkIds[i - 1], packageId])
   }
 
   // Merges packages: moves all links of the source packages to the end of the destination package.

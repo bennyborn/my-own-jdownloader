@@ -154,12 +154,14 @@ const post = async (url: string, body: unknown) => {
 const draggablePackage = ref<number | null>(null)
 const packageDrag = useDragReorder(
   () => packages.value.map((p) => p.uuid),
-  (id, afterId) => void post('/api/linkgrabber/packages/move', { packageIds: [id], afterPackageId: afterId })
+  (ids, afterId) => void post('/api/linkgrabber/packages/move', { packageIds: ids, afterPackageId: afterId }),
+  (id) => (markedPackageIds().includes(id) ? markedPackageIds() : [id])
 )
 let linkDragPackage: number | null = null
 const linkDrag = useDragReorder(
   () => packages.value.find((p) => p.uuid === linkDragPackage)?.links.map((l) => l.uuid) ?? [],
-  (id, afterId) => void post(`/api/linkgrabber/packages/${linkDragPackage}/links/move`, { linkIds: [id], afterLinkId: afterId })
+  (ids, afterId) => void post(`/api/linkgrabber/packages/${linkDragPackage}/links/move`, { linkIds: ids, afterLinkId: afterId }),
+  (id) => (selected.value.has(id) ? (packages.value.find((p) => p.uuid === linkDragPackage)?.links ?? []).map((l) => l.uuid).filter((x) => selected.value.has(x)) : [id])
 )
 const onLinkDragStart = (packageId: number, linkId: number, event: DragEvent) => {
   linkDragPackage = packageId
