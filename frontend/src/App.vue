@@ -392,11 +392,11 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid
 .running .badge { color: var(--accent); }
 .finished .badge, .extracted .badge { color: var(--ok); }
 .extracting .badge { color: var(--extract-text); }
-.extract-failed .badge { color: #d14343; }
+.extract-failed .badge, .download-error .badge { color: #d14343; }
 .bar { height: 8px; margin: 10px 0 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .fill { height: 100%; background: var(--accent); transition: width 0.5s; }
 .finished .fill, .extracted .fill { background: var(--ok); }
-.extract-failed .fill { background: #d14343; }
+.extract-failed .fill, .download-error .fill { background: #d14343; }
 /* No percentage is available while JD unpacks: a moving yellow stripe pattern shows that work is going on. */
 .extracting .fill, .link.extracting .pfill {
   background: repeating-linear-gradient(-45deg, var(--extract) 0 10px, color-mix(in srgb, var(--extract) 70%, #000) 10px 20px);

@@ -92,8 +92,11 @@ let timer: ReturnType<typeof setInterval> | undefined
 const percentOf = (loaded: number, total: number) => (total > 0 ? Math.min(100, (loaded / total) * 100) : 0)
 const percent = computed(() => percentOf(props.pkg.bytesLoaded, props.pkg.bytesTotal))
 // Unpacking comes after the download: a finished item is "extracting" / "extracted" / "extract-failed" then.
-const stateOf = (x: { finished: boolean; running: boolean; enabled: boolean; extraction?: Extraction }) => {
+// JD reports download errors only as status text ("File not found", "An Error occurred!", ...).
+const isErrorStatus = (status?: string) => /error|not found|offline|failed|unavailable/i.test(status ?? '')
+const stateOf = (x: { finished: boolean; running: boolean; enabled: boolean; extraction?: Extraction; status?: string }) => {
   if (x.finished && x.extraction) return x.extraction === 'done' ? 'extracted' : x.extraction === 'error' ? 'extract-failed' : 'extracting'
+  if (!x.running && x.enabled && isErrorStatus(x.status)) return 'download-error'
   return x.finished ? 'finished' : x.running ? 'running' : x.enabled ? 'idle' : 'disabled'
 }
 const state = computed(() => stateOf(props.pkg))
@@ -112,6 +115,7 @@ const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: strin
   if (l.extraction === 'error') return { kind: 'extract-failed', text: 'extract failed', detail: status }
   if (l.extraction === 'done') return { kind: 'extracted', text: 'extracted', detail: '' }
   if (l.finished) return { kind: 'finished', text: 'finished', detail: '' }
+  if (!l.running && !l.skipped && l.enabled && isErrorStatus(status)) return { kind: 'idle-error', text: 'idle', detail: status }
   if (l.skipped) return { kind: 'skipped', text: 'skipped', detail: status.replace(/^skipped\s*-\s*/i, '') }
   if (l.running) {
     if (/captcha/i.test(status)) return { kind: 'captcha', text: 'captcha', detail: 'waiting for an answer' }
@@ -124,7 +128,7 @@ const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: strin
 }
 
 // Force-started links get a bolt before the status, except once they are finished or failed.
-const showForced = (l: DownloadLink) => !!l.forced && !l.finished && !['finished', 'extracted', 'extract-failed'].includes(linkBadge(l).kind)
+const showForced = (l: DownloadLink) => !!l.forced && !l.finished && !['finished', 'extracted', 'extract-failed', 'idle-error'].includes(linkBadge(l).kind) && !isErrorStatus(l.status)
 
 const pkgTarget = computed<Target>(() => ({
   area: 'downloads',
@@ -203,7 +207,7 @@ onUnmounted(() => clearInterval(timer))
       <h2 :title="pkg.name">{{ pkg.name }}</h2>
       <OctagonPause v-if="pkg.stopMarked" :size="15" class="stopmark" title="Stop mark: JD stops before this package" />
       <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
-      <span v-else class="badge">{{ state === 'extract-failed' ? 'extract failed' : state }}</span>
+      <span v-else class="badge">{{ state === 'extract-failed' ? 'extract failed' : state === 'download-error' ? 'error' : state }}</span>
     </button>
     <div v-if="pkg.saveTo" class="path" :title="pkg.saveTo"><Folder :size="13" /><span>{{ pkg.saveTo }}</span></div>
     <div class="bar"><div class="fill" :style="{ width: (state === 'extracting' ? 100 : percent) + '%' }" /></div>
@@ -284,6 +288,7 @@ onUnmounted(() => clearInterval(timer))
   text-align: left;
   cursor: pointer;
 }
+.download-error .head h2 { color: #d14343; }
 .head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chevron { flex: none; transition: transform 0.15s; color: var(--muted); }
 .chevron.open { transform: rotate(90deg); }
@@ -299,7 +304,7 @@ onUnmounted(() => clearInterval(timer))
 .link .badge .forced { margin-right: 4px; vertical-align: -1px; color: #e0a030; }
 .link .badge.extracting { color: var(--extract-text); }
 .link .badge.extracted { color: var(--ok); }
-.link .badge.extract-failed { color: #d14343; }
+.link .badge.extract-failed, .link .badge.idle-error { color: #d14343; }
 .meta.row { align-items: center; }
 .item { display: inline-flex; align-items: center; gap: 5px; }
 .item .item { gap: 5px; margin-right: 12px; }
