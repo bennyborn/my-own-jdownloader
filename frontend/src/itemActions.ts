@@ -1,28 +1,36 @@
 import { ref } from 'vue'
 import { askConfirm } from './confirm'
-import { selectedDownloadLinks } from './expandedState'
+import { currentDevice } from './devices'
+import { selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
 
 export type Area = 'downloads' | 'linkgrabber'
 
 // A package or link the user can act on (context menu, F2).
 export interface Target {
   area: Area
+  device?: string // the device the item lives on (the overview shows several); the current one if left out
   kind: 'package' | 'link'
   id: number
   name: string
   enabled: boolean
+  running?: boolean // downloads: a download is running right now (no point in offering "Start")
+  finished?: boolean
   saveTo?: string
   hostCount?: number
   // Linkgrabber packages: ids of all fully selected packages (including this one) when at least two are selected.
   mergeIds?: number[]
   // Linkgrabber: all checked links when the target belongs to a multi-selection; remove / add to downloads then act on all of them.
   selectedLinkIds?: number[]
+  // Linkgrabber link that JD offers variants for (quality / format).
+  hasVariants?: boolean
+  variantId?: string // the variant the link has now
 }
 
 export const menu = ref<{ x: number; y: number; target: Target } | null>(null)
 export const renaming = ref<Target | null>(null)
 export const choosingFolder = ref<Target | null>(null)
 export const showingLinks = ref<Target | null>(null)
+export const choosingVariants = ref<Target | null>(null)
 export const hovered = ref<Target | null>(null)
 export const actionError = ref('')
 // Incremented after every successful change so lists can reload.
@@ -30,9 +38,49 @@ export const changeTick = ref(0)
 // Incremented after links were moved from the linkgrabber to the download list.
 export const movedTick = ref(0)
 
+// What an action applies to, for confirmation texts: the marked items or the one that was clicked.
+const describe = (t: Target) => {
+  // Linkgrabber: marked links win, also when the click was on a package header.
+  if (t.selectedLinkIds) return `The ${t.selectedLinkIds.length} selected links`
+  if (t.kind === 'package' && t.mergeIds && t.mergeIds.length > 1) return `The ${t.mergeIds.length} selected packages`
+  return t.kind === 'package' ? `The package "${t.name}" with all its links` : `The link "${t.name}"`
+}
+const idsOf = (t: Target) => (t.selectedLinkIds ? { linkIds: t.selectedLinkIds } : t.kind === 'package' ? { packageIds: t.mergeIds ?? [t.id] } : { linkIds: [t.id] })
+
+export interface ArchiveSettings {
+  autoExtract: boolean
+  removeFilesAfterExtraction: boolean
+  removeDownloadLinksAfterExtraction: boolean
+}
+export interface ArchiveInfo {
+  id: string
+  name: string
+  complete: boolean
+  settings: ArchiveSettings
+}
+
+// Download list: the archives JD recognises for the item the menu is open on (none hides the archive entries).
+export const menuArchives = ref<ArchiveInfo[]>([])
+
 export const openMenu = (event: MouseEvent, target: Target) => {
   event.preventDefault()
   menu.value = { x: event.clientX, y: event.clientY, target }
+  menuArchives.value = []
+  if (target.area !== 'downloads') return
+  fetch('/api/downloads/archives', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...idsOf(target), device: target.device ?? currentDevice.value })
+  })
+    .then((res) => (res.ok ? res.json() : []))
+    .then((archives: ArchiveInfo[]) => {
+      // (the menu holds a reactive proxy of the target, so compare by identity of the item)
+      const open = menu.value?.target
+      if (open && open.kind === target.kind && open.id === target.id && open.device === target.device) menuArchives.value = archives
+    })
+    .catch(() => {
+      /* no archive entry then */
+    })
 }
 export const closeMenu = () => (menu.value = null)
 // True for the package / link a context menu is currently open for (it keeps its hover look).
@@ -48,13 +96,17 @@ export const startRename = (target: Target) => {
   closeMenu()
   renaming.value = target
 }
+export const startVariants = (target: Target) => {
+  closeMenu()
+  choosingVariants.value = target
+}
 export const startFolder = (target: Target) => {
   closeMenu()
   choosingFolder.value = target
 }
 
-const post = async (url: string, body: unknown): Promise<any> => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+const post = async (t: Target, url: string, body: object): Promise<any> => {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, device: t.device ?? currentDevice.value }) })
   if (!res.ok) {
     let message = `HTTP ${res.status}`
     try {
@@ -78,13 +130,17 @@ const run = async (action: () => Promise<unknown>) => {
   }
 }
 
-export const rename = (t: Target, name: string) => run(() => post(`/api/${t.area}/rename`, { kind: t.kind, id: t.id, name }))
-export const setFolder = (t: Target, directory: string) => run(() => post(`/api/${t.area}/directory`, { packageIds: [t.id], directory }))
+// Linkgrabber: adds a copy of the link for each variant (same package), or switches the link itself to one variant.
+export const addVariants = (t: Target, variantIds: string[]) => run(() => post(t, '/api/linkgrabber/variants/add', { linkId: t.id, variantIds }))
+export const switchVariant = (t: Target, variantId: string) => run(() => post(t, '/api/linkgrabber/variant', { linkId: t.id, variantId }))
+
+export const rename = (t: Target, name: string) => run(() => post(t, `/api/${t.area}/rename`, { kind: t.kind, id: t.id, name }))
+export const setFolder = (t: Target, directory: string) => run(() => post(t, `/api/${t.area}/directory`, { packageIds: [t.id], directory }))
 export const toggleEnabled = async (t: Target) => {
   closeMenu()
-  const body = t.selectedLinkIds ? { linkIds: t.selectedLinkIds } : t.kind === 'package' ? { packageIds: [t.id] } : { linkIds: [t.id] }
+  const body = idsOf(t)
   try {
-    await run(() => post(`/api/${t.area}/enabled`, { enabled: !t.enabled, ...body }))
+    await run(() => post(t, `/api/${t.area}/enabled`, { enabled: !t.enabled, ...body }))
   } catch {
     /* error is shown via actionError */
   }
@@ -93,13 +149,11 @@ export const toggleEnabled = async (t: Target) => {
 // Linkgrabber only: takes the package (with all its links) or the single link into the download list.
 export const moveToDownloads = async (t: Target) => {
   closeMenu()
-  const many = t.selectedLinkIds
-  const what = many ? `The ${many.length} selected links` : t.kind === 'package' ? `The package "${t.name}" with all its links` : `The link "${t.name}"`
+  const what = describe(t)
   const ok = await askConfirm({ title: 'Add to downloads', message: `${what} will be moved from the linkgrabber to the download list.`, confirmLabel: 'Add to downloads' })
   if (!ok) return
-  const body = many ? { linkIds: many } : t.kind === 'package' ? { packageIds: [t.id] } : { linkIds: [t.id] }
   try {
-    await run(() => post('/api/linkgrabber/move-to-downloads', body))
+    await run(() => post(t, '/api/linkgrabber/move-to-downloads', idsOf(t)))
     movedTick.value++
   } catch {
     /* error is shown via actionError */
@@ -118,7 +172,7 @@ export const mergePackages = async (t: Target) => {
   })
   if (!ok) return
   try {
-    await run(() => post(`/api/${t.area}/merge`, { destPackageId: t.id, packageIds: others }))
+    await run(() => post(t, `/api/${t.area}/merge`, { destPackageId: t.id, packageIds: others }))
   } catch {
     /* error is shown via actionError */
   }
@@ -144,14 +198,13 @@ const saveDeleteFiles = (value: boolean) => {
 // (the choice is remembered in the browser).
 export const removeItem = async (t: Target) => {
   closeMenu()
-  const many = t.selectedLinkIds
-  const what = many ? `The ${many.length} selected links` : t.kind === 'package' ? `The package "${t.name}" with all its links` : `The link "${t.name}"`
-  const body = many ? { linkIds: many } : t.kind === 'package' ? { packageIds: [t.id] } : { linkIds: [t.id] }
+  const what = describe(t)
+  const body = idsOf(t)
   if (t.area === 'linkgrabber') {
     const ok = await askConfirm({ title: 'Remove', message: `${what} will be removed from the linkgrabber.`, confirmLabel: 'Remove', danger: true })
     if (!ok) return
     try {
-      await run(() => post('/api/linkgrabber/remove', body))
+      await run(() => post(t, '/api/linkgrabber/remove', body))
     } catch {
       /* error is shown via actionError */
     }
@@ -162,8 +215,9 @@ export const removeItem = async (t: Target) => {
   if (!ok) return
   saveDeleteFiles(option.checked)
   try {
-    await run(() => post('/api/downloads/remove', { ...body, deleteFiles: option.checked }))
+    await run(() => post(t, '/api/downloads/remove', { ...body, deleteFiles: option.checked }))
     selectedDownloadLinks.value = new Set() // the marked links are gone
+    selectedDownloadPackages.value = new Set()
   } catch {
     /* error is shown via actionError */
   }
@@ -180,7 +234,7 @@ export const splitByHost = async (t: Target) => {
   const ok = await askConfirm({ title: 'Split by host', message: `${what} will be split into one package per host.`, confirmLabel: 'Split' })
   if (!ok) return
   try {
-    await run(() => post(`/api/${t.area}/split-by-host`, { packageIds: ids }))
+    await run(() => post(t, `/api/${t.area}/split-by-host`, { packageIds: ids }))
   } catch {
     /* error is shown via actionError */
   }
@@ -192,8 +246,48 @@ export const startDownload = async (t: Target) => {
   const body = t.kind === 'package' ? { packageIds: t.mergeIds ?? [t.id] } : { linkIds: t.selectedLinkIds ?? [t.id] }
   try {
     // A disabled item is enabled first, otherwise JD would not download it.
-    if (!t.enabled) await run(() => post('/api/downloads/enabled', { enabled: true, ...body }))
-    await run(() => post('/api/downloads/start', body))
+    if (!t.enabled) await run(() => post(t, '/api/downloads/enabled', { enabled: true, ...body }))
+    await run(() => post(t, '/api/downloads/start', body))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+// Download list: starts the extraction of the archive(s) the package(s) or link(s) belong to.
+export const startExtraction = async (t: Target) => {
+  closeMenu()
+  try {
+    await run(() => post(t, '/api/downloads/extract', idsOf(t)))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+// Download list: JD deletes the downloaded files and the download starts from zero, so it is confirmed first.
+export const resetItem = async (t: Target) => {
+  closeMenu()
+  const what = describe(t)
+  const ok = await askConfirm({
+    title: 'Reset',
+    message: `${what} will be reset: the downloaded files are deleted from disk and the download starts again from the beginning.`,
+    confirmLabel: 'Reset and delete files',
+    danger: true
+  })
+  if (!ok) return
+  try {
+    await run(() => post(t, '/api/downloads/reset', idsOf(t)))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+// Switches one setting for all archives of the menu (on unless every one of them has it on already).
+export const toggleArchiveSetting = async (t: Target, key: keyof ArchiveSettings) => {
+  const archives = menuArchives.value
+  closeMenu()
+  const value = !archives.every((a) => a.settings[key])
+  try {
+    await run(() => post(t, '/api/downloads/archive-settings', { archiveIds: archives.map((a) => a.id), settings: { [key]: value } }))
   } catch {
     /* error is shown via actionError */
   }
@@ -204,7 +298,7 @@ export const moveToEdge = async (t: Target, position: 'top' | 'bottom') => {
   closeMenu()
   const ids = t.kind === 'package' ? (t.mergeIds ?? [t.id]) : (t.selectedLinkIds ?? [t.id])
   try {
-    await run(() => post(`/api/${t.area}/move-to-edge`, { kind: t.kind, ids, position }))
+    await run(() => post(t, `/api/${t.area}/move-to-edge`, { kind: t.kind, ids, position }))
   } catch {
     /* error is shown via actionError */
   }
@@ -214,14 +308,14 @@ export const moveToEdge = async (t: Target, position: 'top' | 'bottom') => {
 export const interleaveHosts = async (t: Target) => {
   closeMenu()
   try {
-    const plan = await post(`/api/${t.area}/interleave`, { packageId: t.id, dryRun: true })
+    const plan = await post(t, `/api/${t.area}/interleave`, { packageId: t.id, dryRun: true })
     const ok = await askConfirm({
       title: 'Interleave hosters',
       message: `The ${plan.parts} files of "${t.name}" will alternate between ${plan.hosts.join(', ')}. ${plan.disable} duplicate link${plan.disable === 1 ? '' : 's'} will be disabled, so nothing is downloaded twice.`,
       confirmLabel: 'Interleave'
     })
     if (!ok) return
-    await run(() => post(`/api/${t.area}/interleave`, { packageId: t.id, dryRun: false }))
+    await run(() => post(t, `/api/${t.area}/interleave`, { packageId: t.id, dryRun: false }))
   } catch (e) {
     actionError.value = e instanceof Error ? e.message : String(e)
   }

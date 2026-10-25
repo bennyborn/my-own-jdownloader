@@ -25,6 +25,8 @@ watch(expandedGrabber, (ids) => save('expandedGrabber', ids))
 
 // Packages marked with ctrl+click in the download list (merge candidates).
 export const selectedDownloadPackages = ref<Set<number>>(new Set())
+// The device the marked packages belong to: the overview shows several lists, but marks never span devices.
+export const selectedPackagesDevice = ref('')
 
 // Links marked in the download list (click, ctrl+click, shift+click); the context menu then acts on all of them.
 export const selectedDownloadLinks = ref<Set<number>>(new Set())

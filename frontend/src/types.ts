@@ -1,3 +1,5 @@
+export type Extraction = 'queued' | 'running' | 'done' | 'error'
+
 export interface DownloadPackage {
   uuid: number
   name: string
@@ -5,6 +7,7 @@ export interface DownloadPackage {
   enabled: boolean
   running: boolean
   finished: boolean
+  extraction?: Extraction
   status?: string
   speed: number
   eta?: number
@@ -31,6 +34,7 @@ export interface DownloadLink {
   running: boolean
   finished: boolean
   skipped: boolean
+  extraction?: Extraction
   status?: string
   speed: number
   eta?: number
@@ -47,6 +51,7 @@ export interface GrabberLink {
   enabled: boolean
   bytesTotal: number
   availability: string
+  variant?: { id: string; name: string } // only for links JD offers variants for
 }
 
 export interface GrabberPackage {

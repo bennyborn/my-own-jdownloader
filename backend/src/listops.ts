@@ -2,6 +2,20 @@ import type { MyJdClient } from './myjd/client.js'
 
 export type Area = 'downloads' | 'linkgrabber'
 
+export interface ArchiveSettings {
+  autoExtract: boolean
+  removeFilesAfterExtraction: boolean
+  removeDownloadLinksAfterExtraction: boolean
+}
+export interface ArchiveInfo {
+  id: string
+  name: string
+  type: string
+  status: string
+  complete: boolean // every part is downloaded, so extracting makes sense
+  settings: ArchiveSettings
+}
+
 // Write operations shared by the download list and the linkgrabber (rename, enable/disable, folder).
 export class ListOps {
   constructor(
@@ -140,6 +154,49 @@ export class ListOps {
   async startDownload(linkIds: number[], packageIds: number[]): Promise<void> {
     if (this.area !== 'downloads') throw new Error('Only supported for the download list')
     await this.call('forceDownload', [linkIds, packageIds])
+  }
+
+  // Download list only: the archives JD recognises among the given links / packages (none for plain files),
+  // with their own settings. A setting JD has no value for (it then follows the global default) reads as false.
+  async getArchives(linkIds: number[], packageIds: number[]): Promise<ArchiveInfo[]> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    const info = await this.client.callDevice<{ archiveId: string; archiveName: string; type: string; controllerStatus: string; states?: Record<string, string> }[]>(
+      this.deviceId,
+      '/extraction/getArchiveInfo',
+      [linkIds, packageIds]
+    )
+    if (!info.length) return []
+    const settings = await this.client.callDevice<(Partial<ArchiveSettings> & { archiveId: string })[]>(this.deviceId, '/extraction/getArchiveSettings', [info.map((a) => a.archiveId)])
+    return info.map((a) => {
+      const own = settings.find((x) => x.archiveId === a.archiveId)
+      return {
+        id: a.archiveId,
+        name: a.archiveName,
+        type: a.type,
+        status: a.controllerStatus,
+        complete: Object.values(a.states ?? {}).every((state) => state === 'COMPLETE'),
+        settings: { autoExtract: own?.autoExtract === true, removeFilesAfterExtraction: own?.removeFilesAfterExtraction === true, removeDownloadLinksAfterExtraction: own?.removeDownloadLinksAfterExtraction === true }
+      }
+    })
+  }
+
+  // Download list only: changes settings of archives (one call per archive, JD takes a single id).
+  async setArchiveSettings(archiveIds: string[], patch: Partial<ArchiveSettings>): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    for (const id of archiveIds) await this.client.callDevice(this.deviceId, '/extraction/setArchiveSettings', [id, patch])
+  }
+
+  // Download list only: starts the extraction of the archives the given links / packages belong to.
+  async startExtraction(linkIds: number[], packageIds: number[]): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    await this.client.callDevice(this.deviceId, '/extraction/startExtractionNow', [linkIds, packageIds])
+  }
+
+  // Download list only: resets links / packages. JD deletes the downloaded (and partial) files and the
+  // download starts from zero.
+  async resetLinks(linkIds: number[], packageIds: number[]): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    await this.call('resetLinks', [linkIds, packageIds])
   }
 
   // Splits packages into one package per host.

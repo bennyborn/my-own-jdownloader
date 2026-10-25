@@ -1,20 +1,24 @@
 <script setup lang="ts">
+import { toneIcon } from './iconTone'
+import { withDevice } from './devices'
 import { ChevronRight, Clock, Folder, Gauge, GripVertical, HardDrive, Link2, PowerOff } from 'lucide-vue-next'
-import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
+import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages, selectedPackagesDevice } from './expandedState'
 import { showError } from './toast'
 import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } from './itemActions'
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import PackageSlot from './PackageSlot.vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
 import { reorderLocally, useDragReorder } from './dragReorder'
-import type { DownloadLink, DownloadPackage } from './types'
+import type { DownloadLink, DownloadPackage, Extraction } from './types'
 
-const props = defineProps<{ pkg: DownloadPackage }>()
+const props = defineProps<{ pkg: DownloadPackage; device?: string }>()
 
 const expanded = ref(expandedDownloads.has(props.pkg.uuid))
 const packageDraggable = ref(false)
 // Hosts whose icon could not be loaded are shown as text instead.
 const brokenIcons = reactive(new Set<string>())
-const picked = computed(() => selectedDownloadPackages.value.has(props.pkg.uuid))
+const deviceKey = computed(() => props.device ?? '')
+const picked = computed(() => selectedDownloadPackages.value.has(props.pkg.uuid) && selectedPackagesDevice.value === deviceKey.value)
 // Marking links: click selects one, ctrl/cmd+click toggles, shift+click selects the range from the last
 // click (inside this package). Links and packages are never marked at the same time.
 const onLinkClick = (e: MouseEvent, l: DownloadLink) => {
@@ -48,7 +52,9 @@ const onLinkContext = (e: MouseEvent, l: DownloadLink) => {
 // Ctrl/Cmd+click marks the package (for merging) instead of expanding it; a plain click clears the marks.
 const onHeadClick = (e: MouseEvent) => {
   if (e.ctrlKey || e.metaKey) {
-    const next = new Set(selectedDownloadPackages.value)
+    // Marks of another device's list are dropped: an action only ever goes to one device.
+    const next = new Set(selectedPackagesDevice.value === deviceKey.value ? selectedDownloadPackages.value : [])
+    selectedPackagesDevice.value = deviceKey.value
     if (!next.delete(props.pkg.uuid)) next.add(props.pkg.uuid)
     selectedDownloadPackages.value = next
     if (selectedDownloadLinks.value.size) selectedDownloadLinks.value = new Set()
@@ -63,7 +69,7 @@ const error = ref('')
 const moveLink = async (id: number, afterId: number) => {
   if (links.value) links.value = reorderLocally(links.value, (l) => l.uuid, id, afterId)
   try {
-    const res = await fetch(`/api/packages/${props.pkg.uuid}/links/move`, {
+    const res = await fetch(withDevice(`/api/packages/${props.pkg.uuid}/links/move`, props.device), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ linkIds: [id], afterLinkId: afterId })
@@ -80,8 +86,11 @@ let timer: ReturnType<typeof setInterval> | undefined
 
 const percentOf = (loaded: number, total: number) => (total > 0 ? Math.min(100, (loaded / total) * 100) : 0)
 const percent = computed(() => percentOf(props.pkg.bytesLoaded, props.pkg.bytesTotal))
-const stateOf = (x: { finished: boolean; running: boolean; enabled: boolean }) =>
-  x.finished ? 'finished' : x.running ? 'running' : x.enabled ? 'idle' : 'disabled'
+// Unpacking comes after the download: a finished item is "extracting" / "extracted" / "extract-failed" then.
+const stateOf = (x: { finished: boolean; running: boolean; enabled: boolean; extraction?: Extraction }) => {
+  if (x.finished && x.extraction) return x.extraction === 'done' ? 'extracted' : x.extraction === 'error' ? 'extract-failed' : 'extracting'
+  return x.finished ? 'finished' : x.running ? 'running' : x.enabled ? 'idle' : 'disabled'
+}
 const state = computed(() => stateOf(props.pkg))
 
 // Tooltip with JD's full status text; nothing for the plain "Download" of a running download.
@@ -94,6 +103,9 @@ const statusTip = (l: DownloadLink): string | undefined => {
 // raw status text that used to sit next to the host.
 const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: string } => {
   const status = l.status ?? ''
+  if (l.extraction === 'running' || l.extraction === 'queued') return { kind: 'extracting', text: 'extracting', detail: l.extraction === 'queued' ? 'queued' : '' }
+  if (l.extraction === 'error') return { kind: 'extract-failed', text: 'extract failed', detail: status }
+  if (l.extraction === 'done') return { kind: 'extracted', text: 'extracted', detail: '' }
   if (l.finished) return { kind: 'finished', text: 'finished', detail: '' }
   if (l.skipped) return { kind: 'skipped', text: 'skipped', detail: status.replace(/^skipped\s*-\s*/i, '') }
   if (l.running) {
@@ -108,26 +120,32 @@ const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: strin
 
 const pkgTarget = computed<Target>(() => ({
   area: 'downloads',
+  device: props.device,
   kind: 'package',
   id: props.pkg.uuid,
   name: props.pkg.name,
   enabled: props.pkg.enabled,
+  running: props.pkg.running,
+  finished: props.pkg.finished,
   saveTo: props.pkg.saveTo,
   hostCount: props.pkg.hosts.length,
   mergeIds: picked.value && selectedDownloadPackages.value.size > 1 ? [...selectedDownloadPackages.value] : undefined
 }))
 const linkTarget = (l: DownloadLink): Target => ({
   area: 'downloads',
+  device: props.device,
   kind: 'link',
   id: l.uuid,
   name: l.name,
   enabled: l.enabled,
+  running: l.running,
+  finished: l.finished,
   selectedLinkIds: selectedDownloadLinks.value.has(l.uuid) && selectedDownloadLinks.value.size > 1 ? [...selectedDownloadLinks.value] : undefined
 })
 
 const loadLinks = async () => {
   try {
-    const res = await fetch(`/api/packages/${props.pkg.uuid}/links`)
+    const res = await fetch(withDevice(`/api/packages/${props.pkg.uuid}/links`, props.device))
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const fresh = await res.json()
     if (drag.dragId.value === null) links.value = fresh
@@ -174,26 +192,31 @@ onUnmounted(() => clearInterval(timer))
       <ChevronRight :size="16" class="chevron" :class="{ open: expanded }" />
       <h2 :title="pkg.name">{{ pkg.name }}</h2>
       <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
-      <span v-else class="badge">{{ state }}</span>
+      <span v-else class="badge">{{ state === 'extract-failed' ? 'extract failed' : state }}</span>
     </button>
     <div v-if="pkg.saveTo" class="path" :title="pkg.saveTo"><Folder :size="13" /><span>{{ pkg.saveTo }}</span></div>
-    <div class="bar"><div class="fill" :style="{ width: percent + '%' }" /></div>
+    <div class="bar"><div class="fill" :style="{ width: (state === 'extracting' ? 100 : percent) + '%' }" /></div>
     <div class="row meta">
-      <span class="item" title="Loaded / total size">
-        <HardDrive :size="14" />{{ formatBytes(pkg.bytesLoaded) }} <span class="dim">/ {{ formatBytes(pkg.bytesTotal) }} ({{ percent.toFixed(1) }}%)</span>
-      </span>
-      <span v-if="pkg.running" class="item">
-        <span class="item" title="Download speed"><Gauge :size="14" />{{ formatSpeed(pkg.speed) }}</span>
-        <span class="item" title="Finished in"><Clock :size="14" />{{ formatLongEta(pkg.eta ?? null) }}</span>
-      </span>
-      <span class="item" title="Links"><Link2 :size="14" />{{ pkg.childCount }}</span>
-      <span v-if="pkg.hosts.length" class="hosts">
-        <template v-for="h in pkg.hosts" :key="h">
-          <img v-if="!brokenIcons.has(h)" class="hosticon" :class="{ idle: pkg.hosts.length > 1 && pkg.activeHosts.length > 0 && !pkg.activeHosts.includes(h) }" :src="`/api/icons/${h}`" :title="h" :alt="h" width="16" height="16" loading="lazy" @error="brokenIcons.add(h)" />
-          <span v-else>{{ h }}</span>
-        </template>
-      </span>
+      <PackageSlot name="package-meta" :pkg="pkg" :device="device">
+        <span class="item" title="Loaded / total size">
+          <HardDrive :size="14" />{{ formatBytes(pkg.bytesLoaded) }} <span class="dim">/ {{ formatBytes(pkg.bytesTotal) }} ({{ percent.toFixed(1) }}%)</span>
+        </span>
+        <span v-if="pkg.running" class="item">
+          <span class="item" title="Download speed"><Gauge :size="14" />{{ formatSpeed(pkg.speed) }}</span>
+          <span class="item" title="Finished in"><Clock :size="14" />{{ formatLongEta(pkg.eta ?? null) }}</span>
+        </span>
+        <span class="item" title="Links"><Link2 :size="14" />{{ pkg.childCount }}</span>
+        <span v-if="pkg.hosts.length" class="hosts">
+          <template v-for="h in pkg.hosts" :key="h">
+            <img v-if="!brokenIcons.has(h)" class="hosticon" :class="{ idle: pkg.hosts.length > 1 && pkg.activeHosts.length > 0 && !pkg.activeHosts.includes(h) }" :src="`/api/icons/${h}`" :title="h" :alt="h" width="16" height="16" loading="lazy" @load="toneIcon" @error="brokenIcons.add(h)" />
+            <span v-else>{{ h }}</span>
+          </template>
+        </span>
+      </PackageSlot>
     </div>
+
+    <!-- Block for plugins: a column at the right edge of the card (empty unless a plugin fills it). -->
+    <div class="pkg-aside"><PackageSlot name="package-aside" :pkg="pkg" :device="device" /></div>
 
     <div v-if="expanded" class="links">
             <p v-if="error" class="meta">Could not load links: {{ error }}</p>
@@ -216,9 +239,9 @@ onUnmounted(() => clearInterval(timer))
         @dragend.stop="drag.onDragEnd()"
       >
         <div class="main">
-          <span class="name">{{ l.name }}</span>
+          <span class="name" :title="l.name">{{ l.name }}</span>
           <span class="sub">
-            <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="14" height="14" loading="lazy" @error="($event.target as HTMLElement).style.display = 'none'" />
+            <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="14" height="14" loading="lazy" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
             {{ l.host }}
           </span>
         </div>
@@ -230,7 +253,7 @@ onUnmounted(() => clearInterval(timer))
           <span class="badge" :class="linkBadge(l).kind">{{ linkBadge(l).text }}</span>
           <span class="sub">{{ linkBadge(l).detail }}</span>
         </div>
-        <div class="pbar"><div class="pfill" /><span>{{ percentOf(l.bytesLoaded, l.bytesTotal).toFixed(0) }}%</span></div>
+        <div class="pbar"><div class="pfill" /><span>{{ stateOf(l) === 'extracting' ? 'unpacking' : percentOf(l.bytesLoaded, l.bytesTotal).toFixed(0) + '%' }}</span></div>
       </div>
     </div>
   </article>
@@ -260,6 +283,9 @@ onUnmounted(() => clearInterval(timer))
 .off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.75rem; }
 .link .badge.captcha, .link .badge.skipped { color: #e0a030; }
 .link .badge.waiting { color: var(--muted); }
+.link .badge.extracting { color: var(--extract-text); }
+.link .badge.extracted { color: var(--ok); }
+.link .badge.extract-failed { color: #d14343; }
 .meta.row { align-items: center; }
 .item { display: inline-flex; align-items: center; gap: 5px; }
 .item .item { gap: 5px; margin-right: 12px; }
@@ -301,11 +327,23 @@ onUnmounted(() => clearInterval(timer))
 .link .state { font-variant-numeric: tabular-nums; }
 .pbar { position: relative; height: 22px; border-radius: 11px; background: var(--border); overflow: hidden; }
 .pfill { position: absolute; inset: 0 auto 0 0; width: var(--p); background: var(--accent); transition: width 0.5s; }
-.link.finished .pfill { background: var(--ok); }
-.link:not(.running):not(.finished) .pfill { background: var(--muted); }
+.link.finished .pfill, .link.extracted .pfill { background: var(--ok); }
+.link.extracting .pfill { width: 100%; background: var(--extract); }
+.link.extracting .pbar span { color: #1a1a1a; }
+.link.extract-failed .pfill { background: #d14343; }
+.link:not(.running):not(.finished):not(.extracting):not(.extracted):not(.extract-failed) .pfill { background: var(--muted); }
 .pbar span { position: relative; display: block; text-align: center; line-height: 22px; font-size: 0.75rem; font-weight: 600; color: var(--text); mix-blend-mode: normal; }
 @media (max-width: 720px) {
   .link { grid-template-columns: minmax(0, 1fr) 90px; }
   .link .size, .link .state { display: none; }
 }
+</style>
+
+<!-- Not scoped: the contents of the aside block come from plugins. -->
+<style>
+.package:has(> .pkg-aside > *), .gpackage:has(> .pkg-aside > *) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
+.package:has(> .pkg-aside > *) > *, .gpackage:has(> .pkg-aside > *) > * { grid-column: 1; }
+.package:has(> .pkg-aside > *) > .pkg-aside, .gpackage:has(> .pkg-aside > *) > .pkg-aside { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
+.package:has(> .pkg-aside > *) > .links, .gpackage:has(> .pkg-aside > *) > .glinks { grid-column: 1 / -1; }
+.pkg-aside:not(:has(> *)) { display: none; }
 </style>

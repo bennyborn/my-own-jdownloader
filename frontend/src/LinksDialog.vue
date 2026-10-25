@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withDevice } from './devices'
 import { Check, Copy, X } from 'lucide-vue-next'
 import { nextTick, ref, watch } from 'vue'
 import { showingLinks } from './itemActions'
@@ -17,7 +18,7 @@ watch(showingLinks, async (t) => {
   if (!t) return
   loading.value = true
   try {
-    const res = await fetch(`/api/${t.area}/urls?kind=${t.kind}&id=${t.id}`)
+    const res = await fetch(withDevice(`/api/${t.area}/urls?kind=${t.kind}&id=${t.id}`, t.device))
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     urls.value = (await res.json()).urls
     await nextTick()

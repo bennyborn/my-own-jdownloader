@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withDevice } from './devices'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { actionError, choosingFolder, hovered, renaming, rename, setFolder, startRename } from './itemActions'
 
@@ -29,7 +30,7 @@ watch(choosingFolder, async (t) => {
   await nextTick()
   folderInput.value?.focus()
   try {
-    const res = await fetch('/api/linkgrabber/folders')
+    const res = await fetch(withDevice('/api/linkgrabber/folders', t.device))
     if (res.ok) folders.value = await res.json()
   } catch {
     /* suggestions are optional */

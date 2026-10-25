@@ -19,6 +19,13 @@ export interface GrabberLink {
   enabled: boolean
   bytesTotal: number
   availability: string
+  // Set by JD when the link offers variants (e.g. YouTube qualities); absent for links without.
+  variant?: LinkVariant
+}
+
+export interface LinkVariant {
+  id: string
+  name: string
 }
 
 export interface AddLinksOptions {
@@ -65,7 +72,7 @@ export class Linkgrabber {
   // All links of all packages in one call (packageUUID tells which package a link belongs to).
   async getLinks(): Promise<GrabberLink[]> {
     const raw = await this.call<Partial<GrabberLink>[]>('/linkgrabberv2/queryLinks', [
-      { maxResults: -1, startAt: 0, host: true, url: true, bytesTotal: true, availability: true, enabled: true, packageUUID: true }
+      { maxResults: -1, startAt: 0, host: true, url: true, bytesTotal: true, availability: true, enabled: true, packageUUID: true, variantID: true, variantName: true }
     ])
     return raw.map((l) => ({
       uuid: l.uuid ?? 0,
@@ -75,8 +82,44 @@ export class Linkgrabber {
       url: l.url,
       enabled: l.enabled === true,
       bytesTotal: l.bytesTotal ?? 0,
-      availability: l.availability ?? 'UNKNOWN'
+      availability: l.availability ?? 'UNKNOWN',
+      variant: l.variant?.id ? { id: l.variant.id, name: l.variant.name ?? l.variant.id } : undefined
     }))
+  }
+
+  // The source URLs of a package's links.
+  async getUrls(packageUuid: number): Promise<string[]> {
+    const raw = await this.call<{ url?: string }[]>('/linkgrabberv2/queryLinks', [{ packageUUIDs: [packageUuid], maxResults: -1, startAt: 0, url: true }])
+    return [...new Set(raw.map((l) => l.url).filter((u): u is string => typeof u === 'string' && u !== ''))]
+  }
+
+  // The variants JD offers for one link (the same variant name can occur more than once, the id is what counts).
+  async getVariants(linkId: number): Promise<LinkVariant[]> {
+    const raw = await this.call<Partial<LinkVariant>[] | null>('/linkgrabberv2/getVariants', [linkId])
+    return (raw ?? []).filter((v) => typeof v.id === 'string').map((v) => ({ id: v.id as string, name: v.name ?? (v.id as string) }))
+  }
+
+  private async requireVariants(linkId: number, variantIds: string[]): Promise<void> {
+    const known = new Set((await this.getVariants(linkId)).map((v) => v.id))
+    if (!variantIds.every((id) => known.has(id))) throw new Error('Unknown variant for this link')
+  }
+
+  // Switches the link itself to another variant.
+  async setVariant(linkId: number, variantId: string): Promise<void> {
+    await this.requireVariants(linkId, [variantId])
+    await this.call('/linkgrabberv2/setVariant', [linkId, variantId])
+  }
+
+  // Adds one more link per variant to the package of the link; the link itself stays as it is.
+  async addVariantCopies(linkId: number, variantIds: string[]): Promise<void> {
+    const link = (await this.getLinks()).find((l) => l.uuid === linkId)
+    if (!link) throw new Error('Link not found')
+    await this.requireVariants(linkId, variantIds)
+    // Every copy goes right behind the original, so insert in reverse to end up in the order of the selection.
+    for (const variantId of [...new Set(variantIds)].reverse()) {
+      if (variantId === link.variant?.id) continue
+      await this.call('/linkgrabberv2/addVariantCopy', [linkId, linkId, link.packageUUID, variantId])
+    }
   }
 
   // Download folders used before, as shown in the folder dropdown of the original UI.
