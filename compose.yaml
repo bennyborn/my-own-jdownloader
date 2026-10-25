@@ -2,11 +2,15 @@ services:
   app:
     build: .
     ports:
-      - "20031:20031"
+      - "${APP_PORT:?set APP_PORT in .env}:3000"
     env_file: .env
+    environment:
+      PORT: 3000
     restart: unless-stopped
     volumes:
       - icon_cache:/app/data
+      # Plugins: add your own folders here (restart to pick them up)
+      - ./plugins:/app/plugins:ro
 
   # Development tooling: all npm/node usage happens in this container, never on the host.
   # Usage: docker compose run --rm dev npm install
@@ -18,13 +22,14 @@ services:
     env_file: .env
     environment:
       HOME: /tmp
+      PORT: 3000
     volumes:
       - .:/app
       - node_modules:/app/node_modules
       - backend_node_modules:/app/backend/node_modules
       - frontend_node_modules:/app/frontend/node_modules
     ports:
-      - "20031:20031"
+      - "${APP_PORT:?set APP_PORT in .env}:3000"
 
 volumes:
   icon_cache:
