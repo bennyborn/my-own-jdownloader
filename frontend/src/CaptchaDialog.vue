@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { toneIcon } from './iconTone'
+import { multiple, withDevice } from './devices'
 import { ChevronDown, Clock, RefreshCw } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatCountdown } from './format'
@@ -50,7 +52,7 @@ watch(
 )
 
 const post = async (path: string, body: unknown) => {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(withDevice(path, (props.job ?? lastJob.value)?.device), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) {
     let message = `HTTP ${res.status}`
     try {
@@ -118,16 +120,16 @@ const refresh = async () => {
   <div v-if="view" class="overlay" role="dialog" aria-modal="true" aria-label="Enter captcha">
     <div class="dialog" @click="menu = false">
       <h3>
-        <img :src="`/api/icons/${view.hoster}`" alt="" width="20" height="20" @error="($event.target as HTMLElement).style.display = 'none'" />
+        <img :src="`/api/icons/${view.hoster}`" alt="" width="20" height="20" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
         Enter captcha
         <span class="left" :class="{ low: remainingMs < 60000 }" title="Time left to answer"><Clock :size="15" />{{ formatCountdown(remainingMs) }}</span>
       </h3>
       <p class="ask">
         <span v-if="more" class="more" :title="`${more} more waiting`">{{ more + 1 }}</span>
-        <strong>{{ view.hoster }}</strong> wants you to solve this captcha
+        <strong>{{ view.hoster }}</strong> wants you to solve this captcha<template v-if="multiple && view.deviceName"> <span class="muted">(on {{ view.deviceName }})</span></template>
       </p>
       <div class="picture" :class="{ loading: refreshing }">
-        <img :key="imageVersion" :src="`/api/captcha/${view.id}/image?v=${imageVersion}`" alt="Captcha" />
+        <img :key="imageVersion" :src="withDevice(`/api/captcha/${view.id}/image?v=${imageVersion}`, view.device)" alt="Captcha" />
         <div v-if="refreshing" class="wait" role="status"><RefreshCw :size="22" class="spin" /> Requesting a new captcha…</div>
       </div>
       <input ref="input" v-model="text" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Enter response…" :disabled="busy || refreshing" @keydown.enter="solve" />

@@ -1,15 +1,19 @@
 <script setup lang="ts">
+import { toneIcon } from './iconTone'
+import { withDevice } from './devices'
 import { ChevronRight, GripVertical, CircleCheck, CircleHelp, CircleX, Folder, Inbox, PowerOff, Loader, PackagePlus, Trash2, X } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 import { askConfirm } from './confirm'
 import { useDragReorder } from './dragReorder'
 import { expandedGrabber } from './expandedState'
 import { formatBytes } from './format'
+import PackageSlot from './PackageSlot.vue'
 import { showError } from './toast'
 import { clearHovered, menuOn, movedTick, openMenu, setHovered, type Target } from './itemActions'
 import type { GrabberLink, GrabberState } from './types'
 
-const props = defineProps<{ state: GrabberState | null; analysing: boolean }>()
+// device: the device this list belongs to (the overview shows several lists); compact: a short note instead of the big empty state.
+const props = defineProps<{ state: GrabberState | null; analysing: boolean; device?: string; compact?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const selected = ref<Set<number>>(new Set()) // selected link uuids
@@ -28,6 +32,7 @@ const extOf = (l: GrabberLink) => {
 const markedPackageIds = () => packages.value.filter((p) => p.links.length && selectionState(p.links) === 'all').map((p) => p.uuid)
 const packageTarget = (p: { uuid: number; name: string; enabled: boolean; saveTo?: string }): Target => ({
   area: 'linkgrabber',
+  device: props.device,
   kind: 'package',
   id: p.uuid,
   name: p.name,
@@ -40,10 +45,13 @@ const packageTarget = (p: { uuid: number; name: string; enabled: boolean; saveTo
 })
 const linkTarget = (l: GrabberLink): Target => ({
   area: 'linkgrabber',
+  device: props.device,
   kind: 'link',
   id: l.uuid,
   name: l.name,
   enabled: l.enabled,
+  hasVariants: !!l.variant,
+  variantId: l.variant?.id,
   selectedLinkIds: selected.value.has(l.uuid) && selected.value.size > 1 ? [...selected.value] : undefined
 })
 const isPackageDisabled = (p: { enabled: boolean; links: GrabberLink[] }) => !p.enabled || (p.links.length > 0 && p.links.every((l) => !l.enabled))
@@ -83,14 +91,19 @@ const clearFilters = () => {
   extFilter.value = new Set()
 }
 
-// Forget open packages that are gone from the linkgrabber (only once its list has arrived).
+// Forget open packages that are gone from this list. The open state is shared by all lists (the overview shows
+// one per device), so only packages this list knew before are dropped, never those of other devices.
+let knownPackages = new Set<number>()
 watch(
   () => props.state?.packages,
   (list) => {
-    if (!list?.length) return
+    if (!list) return
     const ids = new Set(list.map((p) => p.uuid))
-    if ([...expandedGrabber.value].some((id) => !ids.has(id))) expandedGrabber.value = new Set([...expandedGrabber.value].filter((id) => ids.has(id)))
-  }
+    const gone = [...knownPackages].filter((id) => !ids.has(id))
+    knownPackages = ids
+    if (gone.some((id) => expandedGrabber.value.has(id))) expandedGrabber.value = new Set([...expandedGrabber.value].filter((id) => !gone.includes(id)))
+  },
+  { immediate: true }
 )
 
 // Selection only ever covers visible links, so hidden links are never moved or removed by accident.
@@ -131,7 +144,7 @@ const toggleExpanded = (id: number) => {
 // Manual reordering: packages by their grip, links within their own package.
 const post = async (url: string, body: unknown) => {
   try {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const res = await fetch(withDevice(url, props.device), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     emit('changed')
   } catch (e) {
@@ -165,7 +178,7 @@ const checkboxState = (el: HTMLInputElement | null, state: string) => {
 const act = async (route: 'move-to-downloads' | 'remove') => {
   busy.value = true
   try {
-    const res = await fetch(`/api/linkgrabber/${route}`, {
+    const res = await fetch(withDevice(`/api/linkgrabber/${route}`, props.device), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ linkIds: [...selected.value] })
@@ -211,7 +224,7 @@ const removeSelected = async () => {
       <div v-if="hostChips.length > 1 || hostFilter.size" class="chips">
         <span class="label">Host</span>
         <button v-for="[host, count] in hostChips" :key="host" type="button" class="chip" :class="{ on: hostFilter.has(host) }" @click="toggleFilter('host', host)">
-          <img class="hosticon" :src="`/api/icons/${host}`" alt="" width="14" height="14" @error="($event.target as HTMLElement).style.display = 'none'" />
+          <img class="hosticon" :src="`/api/icons/${host}`" alt="" width="14" height="14" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
           {{ host }} <span class="n">{{ count }}</span>
         </button>
       </div>
@@ -225,6 +238,7 @@ const removeSelected = async () => {
     </div>
 
     <p v-if="!state" class="muted">Loading…</p>
+    <p v-else-if="!allLinks.length && !analysing && compact" class="muted">The linkgrabber is empty.</p>
     <div v-else-if="!allLinks.length && !analysing" class="empty">
       <Inbox :size="72" :stroke-width="1.25" />
       <p>The linkgrabber is empty</p>
@@ -257,6 +271,7 @@ const removeSelected = async () => {
         <span class="muted">{{ p.links.length }} links · {{ formatBytes(p.links.reduce((sum, l) => sum + l.bytesTotal, 0)) }}</span>
       </div>
       <div v-if="p.saveTo" class="path" :title="p.saveTo"><Folder :size="13" /><span>{{ p.saveTo }}</span></div>
+      <div class="pkg-aside"><PackageSlot name="package-aside" :pkg="p" area="linkgrabber" :device="device" /></div>
       <div v-if="expandedGrabber.has(p.uuid)" class="glinks">
         <div
           v-for="l in p.links"
@@ -275,7 +290,10 @@ const removeSelected = async () => {
           @click="onLinkClick($event, l)"
         >
           <input type="checkbox" :checked="selected.has(l.uuid)" @click.stop="onLinkClick($event, l)" />
-          <span class="lname">{{ l.name }}</span>
+          <span class="lcell">
+            <span class="lname" :title="l.name">{{ l.name }}</span>
+            <span v-if="l.variant" class="variant" :title="`Variant: ${l.variant.name}`">{{ l.variant.name }}</span>
+          </span>
           <span class="muted host">{{ l.host }}</span>
           <span class="muted num">{{ formatBytes(l.bytesTotal) }}</span>
           <span class="avail" :class="l.availability.toLowerCase()" :title="l.availability.toLowerCase()">
@@ -346,6 +364,8 @@ button.danger { color: #d14343; }
 .glink + .glink { border-top: 1px solid var(--border); }
 .glink.disabled { opacity: 0.55; }
 .glink.checking { opacity: 0.5; }
+.lcell { display: grid; gap: 2px; min-width: 0; }
+.variant { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.78rem; }
 .lname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }

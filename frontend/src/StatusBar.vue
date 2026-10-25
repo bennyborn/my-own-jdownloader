@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { Clock, Download, Link2, Package, Plus } from 'lucide-vue-next'
+import { withDevice } from './devices'
+import { Clock, Download, Link2, Package, Plus, ShieldCheck } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
 import SpeedGraph, { type SpeedSample } from './SpeedGraph.vue'
 import type { DownloadsSnapshot } from './types'
+import type { CaptchaJob } from './useCaptchas'
 
-const props = defineProps<{ snapshot: DownloadsSnapshot | null; connected: boolean }>()
+const props = defineProps<{ snapshot: DownloadsSnapshot | null; connected: boolean; solverJobs: CaptchaJob[]; device: string }>()
 defineEmits<{ addLinks: [] }>()
 
 const WINDOW_SECONDS = 300
@@ -20,17 +22,23 @@ const addSamples = (added: SpeedSample[]) => {
   samples.value = [...samples.value, ...added].filter((s) => s.t >= cutoff).sort((a, b) => a.t - b.t)
 }
 
-onMounted(async () => {
+// "device" is empty in the overview of all devices: no history to fetch, the graph then only shows live updates.
+const prefill = async () => {
+  samples.value = []
+  if (!props.device) return
+  const device = props.device
   try {
-    const res = await fetch('/api/speed-history')
-    if (!res.ok) return
+    const res = await fetch(withDevice('/api/speed-history', device))
+    if (!res.ok || device !== props.device) return
     const data = (await res.json()) as { now: number; samples: SpeedSample[] }
     clockOffset = Date.now() - data.now
     addSamples(data.samples.map((s) => ({ t: s.t + clockOffset, v: s.v })))
   } catch {
     /* the graph then simply starts empty */
   }
-})
+}
+onMounted(prefill)
+watch(() => props.device, prefill)
 
 watch(
   () => props.snapshot?.updatedAt,
@@ -77,6 +85,9 @@ const totals = computed(() => {
           </dd>
         </div>
       </dl>
+      <a v-if="solverJobs[0]?.openUrl" class="solve" :href="solverJobs[0].openUrl" target="_blank" rel="noopener" :title="`${solverJobs[0].hoster} waits for a captcha`">
+        <ShieldCheck :size="15" /> Solve captcha<span v-if="solverJobs.length > 1" class="count">{{ solverJobs.length }}</span>
+      </a>
       <span class="dot" :class="{ on: connected }" :title="connected ? 'connected' : 'disconnected'" />
     </div>
   </footer>
@@ -112,6 +123,10 @@ dt { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-s
 dd { display: flex; align-items: center; gap: 10px; margin: 0; font-variant-numeric: tabular-nums; }
 .icons span { display: inline-flex; align-items: center; gap: 4px; }
 .icons svg { color: var(--muted); }
+.solve { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 8px 12px; background: #d14343; color: #fff; border-radius: 6px; text-decoration: none; white-space: nowrap; animation: pulse 2s ease-in-out infinite; }
+.solve .count { min-width: 16px; padding: 0 5px; background: rgba(255, 255, 255, 0.25); border-radius: 999px; font-size: 0.75rem; text-align: center; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(209, 67, 67, 0.3); } }
+@media (prefers-reduced-motion: reduce) { .solve { animation: none; } }
 .dim { color: var(--muted); }
 .eta { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
 .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #d14343; }

@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import DevicePicker from './DevicePicker.vue'
+import { ALL, currentDevice, devices, formatHash, multiple, parseHash, select, selected, showingAll, useDevices, withDevice, type Tab } from './devices'
+import { ServerOff } from 'lucide-vue-next'
+import { formatBytes, formatSpeed } from './format'
 import CaptchaDialog from './CaptchaDialog.vue'
+import SolverAlert from './SolverAlert.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ContextMenu from './ContextMenu.vue'
 import LinksDialog from './LinksDialog.vue'
 import ItemDialogs from './ItemDialogs.vue'
+import VariantDialog from './VariantDialog.vue'
 import { actionError, changeTick, movedTick, choosingFolder, renaming } from './itemActions'
 import { useDownloads } from './useDownloads'
-import { Download, FileDown, Link2 } from 'lucide-vue-next'
+import { Download, FileDown, Link2, Settings } from 'lucide-vue-next'
 import { expandedDownloads, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
 import { useFileDrop } from './useFileDrop'
 import ToastHost from './ToastHost.vue'
@@ -16,32 +22,62 @@ import AddLinksModal from './AddLinksModal.vue'
 import LinkgrabberView from './LinkgrabberView.vue'
 import NotifyToggle from './NotifyToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
+import SettingsView from './SettingsView.vue'
+import { loadPlugins } from './plugins'
+import { SECTIONS, settingsSection } from './settings'
 import { notifyNewCaptchas } from './useNotifications'
 import { useCaptchas } from './useCaptchas'
 import { useGrabber } from './useGrabber'
+import type { GrabberState } from './types'
 import StatusBar from './StatusBar.vue'
 import PackageCard from './PackageCard.vue'
 import { reorderLocally, useDragReorder } from './dragReorder'
 
-const { snapshot, connected } = useDownloads()
+useDevices()
+void loadPlugins()
+const { snapshot, snapshots, connected } = useDownloads()
 
 const packages = computed(() => snapshot.value?.packages ?? [])
-// Drop marks of packages that no longer exist (e.g. after a merge).
+
+// The overview: one section per device, offline devices with a note instead of a list.
+const sections = computed(() =>
+  devices.value.map((d) => {
+    const snap = snapshots.value[d.id]
+    const list = snap?.packages ?? []
+    return { device: d, loaded: Boolean(snap), packages: list, speed: d.online === false ? 0 : (snap?.totalSpeed ?? 0), bytesLoaded: list.reduce((sum, p) => sum + p.bytesLoaded, 0), bytesTotal: list.reduce((sum, p) => sum + p.bytesTotal, 0) }
+  })
+)
+// What the status bar shows in the overview: the sum of all devices.
+const statusSnapshot = computed(() => {
+  if (!showingAll.value) return snapshot.value
+  const online = devices.value.filter((d) => d.online !== false).map((d) => snapshots.value[d.id]).filter((s) => s !== undefined)
+  if (!online.length) return null
+  return {
+    updatedAt: Math.max(...online.map((s) => s.updatedAt)),
+    packages: online.flatMap((s) => s.packages),
+    totalSpeed: online.reduce((sum, s) => sum + s.totalSpeed, 0),
+    linkCount: online.reduce((sum, s) => sum + s.linkCount, 0),
+    runningDownloads: online.reduce((sum, s) => sum + s.runningDownloads, 0)
+  }
+})
+// Drop marks of packages that no longer exist (e.g. after a merge). Only packages this list knew before are
+// dropped: the marks are shared with the lists of the other devices in the overview.
+let knownPackages = new Set<number>()
 watch(packages, (list) => {
   const ids = new Set(list.map((p) => p.uuid))
-  // Forget open packages that are gone (only once the list has arrived).
-  if (list.length && [...expandedDownloads].some((id) => !ids.has(id))) {
-    for (const id of [...expandedDownloads]) if (!ids.has(id)) expandedDownloads.delete(id)
+  const gone = [...knownPackages].filter((id) => !ids.has(id))
+  knownPackages = ids
+  if (gone.some((id) => expandedDownloads.has(id))) {
+    for (const id of gone) expandedDownloads.delete(id)
     saveExpandedDownloads()
   }
-  if ([...selectedDownloadPackages.value].some((id) => !ids.has(id))) selectedDownloadPackages.value = new Set([...selectedDownloadPackages.value].filter((id) => ids.has(id)))
+  if (gone.some((id) => selectedDownloadPackages.value.has(id))) selectedDownloadPackages.value = new Set([...selectedDownloadPackages.value].filter((id) => !gone.includes(id)))
 })
-type Tab = 'downloads' | 'grabber'
-const tabFromHash = (): Tab => (location.hash === '#linkgrabber' ? 'grabber' : 'downloads')
+const tabFromHash = (): Tab => parseHash().tab
 const tab = ref<Tab>(tabFromHash())
-// The active tab lives in the URL anchor so a reload (or a shared link) opens the same tab.
-watch(tab, (value) => {
-  const hash = value === 'grabber' ? '#linkgrabber' : '#downloads'
+// The active tab and device live in the URL anchor so a reload (or a shared link) opens the same view.
+watch([tab, selected, settingsSection], () => {
+  const hash = formatHash(tab.value, selected.value, settingsSection.value)
   if (location.hash !== hash) location.hash = hash
 })
 // A click anywhere else (not on a link, a package header or the context menu) clears the marks.
@@ -63,12 +99,19 @@ onUnmounted(() => {
   document.removeEventListener('contextmenu', onContextMenu)
 })
 
-const onHashChange = () => (tab.value = tabFromHash())
+const onHashChange = () => {
+  const { tab: next, device, section } = parseHash()
+  tab.value = next
+  if (section && SECTIONS.some((s) => s.id === section)) settingsSection.value = section
+  if (device !== undefined && device !== selected.value) select(device)
+}
 onMounted(() => window.addEventListener('hashchange', onHashChange))
 onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
 const addOpen = ref(false)
 const grabberVisible = computed(() => tab.value === 'grabber')
 const grabber = useGrabber(grabberVisible)
+// Right after the page was opened with a device in the anchor: keep what the URL says.
+if (location.hash && !location.hash.includes('device=') && selected.value) location.hash = formatHash(tab.value, selected.value)
 const captchas = useCaptchas()
 watch(captchas.jobs, (jobs) => notifyNewCaptchas(jobs))
 
@@ -86,7 +129,7 @@ watch(actionError, (message) => {
 watch(changeTick, async () => {
   void grabber.reload()
   try {
-    const res = await fetch('/api/downloads')
+    const res = await fetch(withDevice('/api/downloads'))
     if (res.ok) snapshot.value = await res.json()
   } catch {
     /* the live stream will catch up */
@@ -94,25 +137,44 @@ watch(changeTick, async () => {
 })
 
 // Once everything has been moved to the downloads, the empty linkgrabber is no use: show the downloads.
+// "Everything" means the linkgrabbers of all devices, not only the one that is shown.
+const anyGrabberHasLinks = async (): Promise<boolean> => {
+  const results = await Promise.all(
+    devices.value
+      .filter((d) => d.online !== false)
+      .map(async (d) => {
+        try {
+          const res = await fetch(withDevice('/api/linkgrabber', d.id))
+          if (!res.ok) return true // unknown: better stay than jump away
+          const state = (await res.json()) as GrabberState
+          return state.packages.some((p) => p.links.length > 0)
+        } catch {
+          return true
+        }
+      })
+  )
+  return results.some(Boolean)
+}
 watch(movedTick, async () => {
   await grabber.reload()
-  if (tab.value === 'grabber' && grabber.linkCount.value === 0) tab.value = 'downloads'
+  if (tab.value === 'grabber' && !(await anyGrabberHasLinks()) && tab.value === 'grabber') tab.value = 'downloads'
 })
 
-const onAdded = async () => {
+const onAdded = async (device?: string) => {
   addOpen.value = false
+  // Show the linkgrabber of the device the links went to.
+  if (device && !showingAll.value && device !== currentDevice.value) select(device)
   tab.value = 'grabber'
   grabber.boost()
 }
 
 const dropping = useFileDrop(onAdded, showError, () => grabber.cancelBoost())
 
-const movePackage = async (id: number, afterId: number) => {
-  if (snapshot.value) {
-    snapshot.value = { ...snapshot.value, packages: reorderLocally(snapshot.value.packages, (p) => p.uuid, id, afterId) }
-  }
+const movePackage = async (device: string, id: number, afterId: number) => {
+  const snap = snapshots.value[device]
+  if (snap) snapshots.value = { ...snapshots.value, [device]: { ...snap, packages: reorderLocally(snap.packages, (p) => p.uuid, id, afterId) } }
   try {
-    const res = await fetch('/api/packages/move', {
+    const res = await fetch(withDevice('/api/packages/move', device), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ packageIds: [id], afterPackageId: afterId })
@@ -123,7 +185,16 @@ const movePackage = async (id: number, afterId: number) => {
   }
 }
 
-const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage)
+// One drag state per device: the overview shows several lists, each is reordered on its own device.
+const drags = new Map<string, ReturnType<typeof useDragReorder>>()
+const dragFor = (device: string) => {
+  let drag = drags.get(device)
+  if (!drag) {
+    drag = useDragReorder(() => (snapshots.value[device]?.packages ?? []).map((p) => p.uuid), (id, afterId) => movePackage(device, id, afterId))
+    drags.set(device, drag)
+  }
+  return drag
+}
 </script>
 
 <template>
@@ -134,37 +205,81 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
       <button type="button" :class="{ active: tab === 'grabber' }" @click="tab = 'grabber'">
         <Link2 :size="16" /> Linkgrabber<span v-if="grabber.linkCount.value" class="count">{{ grabber.linkCount.value }}</span>
       </button>
+      <button type="button" :class="{ active: tab === 'settings' }" @click="tab = 'settings'"><Settings :size="16" /> Settings</button>
     </nav>
     <NotifyToggle />
+    <DevicePicker v-if="multiple" :model-value="showingAll ? ALL : currentDevice" with-all @update:model-value="select" />
     <ThemeToggle />
   </header>
 
   <main>
-    <template v-if="tab === 'downloads'">
+    <SettingsView v-if="tab === 'settings'" />
+    <template v-else-if="tab === 'downloads' && showingAll">
+      <section v-for="s in sections" :key="s.device.id" class="device-section">
+        <h2 class="device-head" :class="{ offline: s.device.online === false }">
+          <ServerOff v-if="s.device.online === false" :size="16" />
+          <span class="name">{{ s.device.name }}</span>
+          <span v-if="s.device.online === false" class="state">offline</span>
+          <span v-else-if="s.packages.length" class="totals">{{ s.packages.length }} package{{ s.packages.length === 1 ? '' : 's' }} · {{ formatBytes(s.bytesLoaded) }} / {{ formatBytes(s.bytesTotal) }}<template v-if="s.speed > 0"> · {{ formatSpeed(s.speed) }}</template></span>
+        </h2>
+        <p v-if="s.device.online === false" class="empty">This device is offline.</p>
+        <p v-else-if="!s.loaded" class="empty">Loading…</p>
+        <p v-else-if="!s.packages.length" class="empty">The download list is empty.</p>
+        <PackageCard
+          v-for="p in s.packages"
+          :key="p.uuid"
+          :pkg="p"
+          :device="s.device.id"
+          :class="[dragFor(s.device.id).dropClass(p.uuid), { dragging: dragFor(s.device.id).dragId.value === p.uuid }]"
+          @dragstart="dragFor(s.device.id).onDragStart(p.uuid, $event)"
+          @dragover="dragFor(s.device.id).onDragOver(p.uuid, $event)"
+          @drop="dragFor(s.device.id).onDrop($event)"
+          @dragend="dragFor(s.device.id).onDragEnd()"
+        />
+      </section>
+    </template>
+    <template v-else-if="tab === 'downloads'">
       <p v-if="!snapshot" class="empty">Loading…</p>
-      <p v-else-if="packages.length === 0" class="empty">No packages in the download list.</p>
+      <div v-else-if="packages.length === 0" class="empty-big">
+        <Download :size="72" :stroke-width="1.25" />
+        <p>The download list is empty</p>
+        <span>Move links from the linkgrabber to see them here.</span>
+      </div>
 
       <PackageCard
         v-for="p in packages"
         :key="p.uuid"
         :pkg="p"
-        :class="[drag.dropClass(p.uuid), { dragging: drag.dragId.value === p.uuid }]"
-        @dragstart="drag.onDragStart(p.uuid, $event)"
-        @dragover="drag.onDragOver(p.uuid, $event)"
-        @drop="drag.onDrop($event)"
-        @dragend="drag.onDragEnd()"
+        :class="[dragFor(currentDevice).dropClass(p.uuid), { dragging: dragFor(currentDevice).dragId.value === p.uuid }]"
+        @dragstart="dragFor(currentDevice).onDragStart(p.uuid, $event)"
+        @dragover="dragFor(currentDevice).onDragOver(p.uuid, $event)"
+        @drop="dragFor(currentDevice).onDrop($event)"
+        @dragend="dragFor(currentDevice).onDragEnd()"
       />
+    </template>
+    <template v-else-if="showingAll">
+      <section v-for="d in devices" :key="d.id" class="device-section">
+        <h2 class="device-head" :class="{ offline: d.online === false }">
+          <ServerOff v-if="d.online === false" :size="16" />
+          <span class="name">{{ d.name }}</span>
+          <span v-if="d.online === false" class="state">offline</span>
+        </h2>
+        <p v-if="d.online === false" class="empty">This device is offline.</p>
+        <LinkgrabberView v-else :state="grabber.states.value[d.id] ?? null" :analysing="grabber.analysing.value" :device="d.id" compact @changed="grabber.reload()" />
+      </section>
     </template>
     <LinkgrabberView v-else :state="grabber.state.value" :analysing="grabber.analysing.value" @changed="grabber.reload()" />
   </main>
 
-  <StatusBar :snapshot="snapshot" :connected="connected" @add-links="addOpen = true" />
+  <StatusBar :snapshot="statusSnapshot" :device="showingAll ? '' : currentDevice" :connected="connected" :solver-jobs="captchas.widgetJobs.value" @add-links="addOpen = true" />
   <ContextMenu />
   <CaptchaDialog :job="captchas.imageJobs.value[0] ?? null" :more="Math.max(0, captchas.imageJobs.value.length - 1)" @handled="captchas.markHandled" @changed="captchas.reload()" />
+  <SolverAlert v-if="!captchas.imageJobs.value.length" :job="captchas.alertJobs.value[0] ?? null" @dismiss="captchas.dismiss" />
   <ConfirmDialog />
   <ToastHost />
   <ItemDialogs />
   <LinksDialog />
+  <VariantDialog />
   <div v-if="dropping.active.value" class="dropzone"><FileDown :size="40" /> Drop container files or links to add them to the linkgrabber</div>
   <AddLinksModal v-if="addOpen" @close="addOpen = false" @added="onAdded" />
 </template>
@@ -179,11 +294,14 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
   --border: #d0d7de;
   --accent: #10ac84;
   --ok: #22a55b;
+  --extract: #fecf02; /* the yellow of the logo (bars) */
+  --extract-text: #8a6500; /* readable on a light background */
   --fill-soft: var(--border);
   --hover: rgba(127, 127, 127, 0.1);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    --extract-text: var(--extract);
     --bg: #0d1117;
     --card: #161b22;
     --text: #e6edf3;
@@ -193,6 +311,7 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
+  --extract-text: var(--extract);
   --bg: #0d1117;
   --card: #161b22;
   --text: #e6edf3;
@@ -200,6 +319,14 @@ const drag = useDragReorder(() => packages.value.map((p) => p.uuid), movePackage
   --border: #30363d;
 }
 :root[data-theme='light'] { color-scheme: light; }
+/* Single-colour icons that would vanish on the current theme (see iconTone.ts). */
+:root[data-theme='dark'] img[data-tone='dark'], :root[data-theme='light'] img[data-tone='light'] { filter: invert(1); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) img[data-tone='dark'] { filter: invert(1); }
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) img[data-tone='light'] { filter: invert(1); }
+}
 body {
   margin: 0;
   background: var(--bg);
@@ -250,15 +377,32 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid
 .drop-before { box-shadow: 0 -3px 0 var(--accent); }
 .drop-after { box-shadow: 0 3px 0 var(--accent); }
 .empty { color: var(--muted); text-align: center; }
+.empty-big { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 55vh; color: var(--muted); text-align: center; }
+.empty-big p { margin: 8px 0 0; font-size: 1.1rem; color: var(--text); }
+.device-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 20px; }
+.device-head { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 1rem; }
+.device-head .totals, .device-head .state { margin-left: auto; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
+.device-head .state { text-transform: uppercase; letter-spacing: 0.03em; }
+.device-head.offline { color: var(--muted); }
 .package { min-width: 0; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
 .package.disabled { opacity: 0.55; }
 .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .badge { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); }
 .running .badge { color: var(--accent); }
-.finished .badge { color: var(--ok); }
+.finished .badge, .extracted .badge { color: var(--ok); }
+.extracting .badge { color: var(--extract-text); }
+.extract-failed .badge { color: #d14343; }
 .bar { height: 8px; margin: 10px 0 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .fill { height: 100%; background: var(--accent); transition: width 0.5s; }
-.finished .fill { background: var(--ok); }
+.finished .fill, .extracted .fill { background: var(--ok); }
+.extract-failed .fill { background: #d14343; }
+/* No percentage is available while JD unpacks: a moving yellow stripe pattern shows that work is going on. */
+.extracting .fill, .link.extracting .pfill {
+  background: repeating-linear-gradient(-45deg, var(--extract) 0 10px, color-mix(in srgb, var(--extract) 70%, #000) 10px 20px);
+  background-size: 28px 28px;
+  animation: extract-stripes 0.8s linear infinite;
+}
+@keyframes extract-stripes { to { background-position: 28px 0; } }
 .meta { gap: 4px 16px; color: var(--muted); font-size: 0.85rem; }
 .status { margin-top: 4px; }
 .dropzone { position: fixed; inset: 12px; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0, 0, 0, 0.6); border: 2px dashed var(--accent); border-radius: 16px; color: #fff; font-size: 1.05rem; pointer-events: none; }

@@ -3,7 +3,7 @@ import { X } from 'lucide-vue-next'
 import { onMounted, onUnmounted } from 'vue'
 import AddLinksForm from './AddLinksForm.vue'
 
-defineEmits<{ close: []; added: [] }>()
+defineEmits<{ close: []; added: [device: string] }>()
 
 // The dialog can only be closed with its buttons (no backdrop click, no Escape),
 // so entered data is never lost by accident. The page behind it does not scroll.
@@ -18,7 +18,7 @@ onUnmounted(() => (document.body.style.overflow = ''))
         <h2>Add links</h2>
         <button type="button" class="close" title="Cancel" @click="$emit('close')"><X :size="16" /></button>
       </header>
-      <div class="body"><AddLinksForm @added="$emit('added')" @cancel="$emit('close')" /></div>
+      <div class="body"><AddLinksForm @added="$emit('added', $event)" @cancel="$emit('close')" /></div>
     </div>
   </div>
 </template>

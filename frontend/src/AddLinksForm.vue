@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Plus } from 'lucide-vue-next'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import DevicePicker from './DevicePicker.vue'
+import { currentDevice, devices, multiple, withDevice } from './devices'
 
-const emit = defineEmits<{ added: []; cancel: [] }>()
+const emit = defineEmits<{ added: [device: string]; cancel: [] }>()
 
 const links = ref('')
 const file = ref<File | null>(null)
@@ -10,7 +12,23 @@ const folders = ref<string[]>([])
 const folder = ref('')
 const customFolder = ref('')
 const useCustomFolder = ref(false)
-const subfolder = ref(false)
+// Remembered in the browser, like the device.
+const SUBFOLDER_KEY = 'addLinksSubfolder'
+const storedSubfolder = () => {
+  try {
+    return localStorage.getItem(SUBFOLDER_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+const subfolder = ref(storedSubfolder())
+watch(subfolder, (on) => {
+  try {
+    localStorage.setItem(SUBFOLDER_KEY, String(on))
+  } catch {
+    /* only a convenience */
+  }
+})
 const packageName = ref('')
 const extractPassword = ref('')
 const downloadPassword = ref('')
@@ -21,16 +39,41 @@ const overwritePackagizerRules = ref(true)
 const error = ref('')
 const busy = ref(false)
 
-onMounted(async () => {
+// The device the links go to (each device has its own folders). The last choice is remembered in the browser
+// as long as that device is still known and online.
+const TARGET_KEY = 'addLinksDevice'
+const storedTarget = () => {
   try {
-    const res = await fetch('/api/linkgrabber/folders')
-    if (!res.ok) return
+    const id = localStorage.getItem(TARGET_KEY)
+    return devices.value.find((d) => d.id === id && d.online !== false)?.id
+  } catch {
+    return undefined
+  }
+}
+const target = ref(storedTarget() ?? currentDevice.value)
+const loadFolders = async () => {
+  const device = target.value
+  try {
+    const res = await fetch(withDevice('/api/linkgrabber/folders', device))
+    if (!res.ok || device !== target.value) return
     folders.value = await res.json()
     // Preselect the shortest known folder, i.e. the base download folder.
     folder.value = [...folders.value].sort((a, b) => a.length - b.length)[0] ?? ''
   } catch {
+    folders.value = []
+    folder.value = ''
     /* folder list is optional */
   }
+}
+onMounted(loadFolders)
+watch(target, (id) => {
+  try {
+    localStorage.setItem(TARGET_KEY, id)
+  } catch {
+    /* only a convenience */
+  }
+  folders.value = []
+  void loadFolders()
 })
 
 const baseFolder = computed(() => (useCustomFolder.value ? customFolder.value.trim() : folder.value))
@@ -48,7 +91,7 @@ const readAsDataUrl = (f: File) =>
   })
 
 const post = async (url: string, body: unknown) => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(withDevice(url, target.value), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
 
@@ -78,7 +121,7 @@ const submit = async () => {
     }
     links.value = ''
     file.value = null
-    emit('added')
+    emit('added', target.value)
   } catch (e) {
     error.value = `Adding failed: ${e instanceof Error ? e.message : e}`
   } finally {
@@ -93,6 +136,11 @@ const submit = async () => {
     <label class="file">
       <input type="file" accept=".dlc,.ccf,.rsdf,.jdc,.metalink,.meta4" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null" />
     </label>
+
+    <template v-if="multiple">
+      <h3>Device</h3>
+      <DevicePicker v-model="target" block disable-offline />
+    </template>
 
     <h3>Save to</h3>
     <div class="row">

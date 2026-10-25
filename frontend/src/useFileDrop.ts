@@ -1,3 +1,4 @@
+import { withDevice } from './devices'
 import { onMounted, onUnmounted, ref } from 'vue'
 
 const CONTAINER_EXTENSIONS = ['dlc', 'ccf', 'rsdf', 'jdc', 'metalink', 'meta4']
@@ -11,7 +12,7 @@ const readAsDataUrl = (f: File) =>
   })
 
 const post = async (url: string, body: unknown) => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(withDevice(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) {
     let message = `HTTP ${res.status}`
     try {
