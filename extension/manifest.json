@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "My Own JDownloader",
+  "short_name": "MyOwnJD",
+  "version": "0.1.0",
+  "description": "Companion for my-own-jdownloader: shows your JDownloader at a glance and solves captchas on the hoster's own page.",
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "permissions": ["storage", "alarms", "scripting", "tabs", "declarativeNetRequest", "notifications"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "JDownloader captchas", "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" } },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "declarative_net_request": { "rule_resources": [{ "id": "cnl", "enabled": true, "path": "rules_cnl.json" }] },
+  "web_accessible_resources": [{ "resources": ["cnl/jdcheck.js", "icons.js", "icons/icon128.png"], "matches": ["<all_urls>"] }],
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_start" },
+    { "matches": ["<all_urls>"], "js": ["cnl-main.js"], "run_at": "document_start", "all_frames": true, "world": "MAIN" },
+    { "matches": ["<all_urls>"], "js": ["cnl-bridge.js"], "run_at": "document_start", "all_frames": true }
+  ],
+  "browser_specific_settings": { "gecko": { "id": "captcha@my-own-jdownloader.local" } }
+}

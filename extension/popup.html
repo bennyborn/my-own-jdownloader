@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="light dark" />
+<style>
+  /* Same palette as the web interface; light or dark follows the system setting only. */
+  :root { --bg: #f6f8fa; --card: #fff; --text: #1f2328; --muted: #59636e; --border: #d0d7de; --accent: #10ac84; --ok: #22a55b; --err: #d14343; --hover: rgba(127, 127, 127, 0.1); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8b949e; --border: #30363d; } }
+  body { width: 340px; margin: 0; padding: 12px; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+  h1 { margin: 0 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .err { color: var(--err); }
+  .cards { display: grid; gap: 10px; }
+  .card { position: relative; overflow: hidden; display: grid; gap: 8px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+  .empty { display: grid; justify-items: center; gap: 4px; padding: 28px 12px 24px; color: var(--muted); text-align: center; }
+  .empty svg { margin-bottom: 8px; }
+  .empty .title { color: var(--text); font-size: 1.05rem; font-weight: 600; }
+  .empty .sub { font-size: 12px; overflow-wrap: anywhere; }
+  .card canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.3; pointer-events: none; }
+  .card > :not(canvas) { position: relative; }
+  .head { display: flex; align-items: center; gap: 8px; }
+  .head .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.online { background: var(--ok); }
+  .stats { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .speed { font-size: 1.1rem; font-weight: 600; }
+  .num { font-variant-numeric: tabular-nums; }
+  .item { display: inline-flex; align-items: center; gap: 5px; }
+  .item svg { flex: none; color: var(--muted); }
+  .queue { display: flex; align-items: center; gap: 14px; color: var(--muted); }
+  .queue .size { margin-left: auto; color: var(--text); }
+  button { padding: 5px 12px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; cursor: pointer; }
+  button:hover { background: var(--hover); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #captchas { margin-bottom: 12px; }
+  .job { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+  .job img { width: 16px; height: 16px; border-radius: 3px; flex: none; }
+  .job .host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .job .left { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .job .left.low { color: var(--err); }
+  .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .bar .title { font-weight: 600; }
+  .icon { display: inline-flex; padding: 5px; border-color: transparent; background: none; color: var(--muted); }
+  .icon:hover { color: var(--text); background: var(--hover); }
+</style>
+<div class="bar">
+  <span class="title">My Own JDownloader</span>
+  <button type="button" id="options" class="icon" title="Settings" aria-label="Settings">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+  </button>
+</div>
+<section id="captchas" hidden>
+  <h1>Captchas</h1>
+  <div id="list" class="cards"></div>
+</section>
+<div id="devices" class="cards"><div class="muted">Connecting…</div></div>
+<script src="popup.js" type="module"></script>
