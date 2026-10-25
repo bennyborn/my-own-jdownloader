@@ -11,6 +11,8 @@ type Setting = (typeof SETTINGS)[number]
 
 interface State {
   apiKey: string
+  // The address we wrote into ApiBase last time, to recognise our own registration after JD_SOLVER_URL changed.
+  base?: string
   previous?: Record<Setting, unknown>
 }
 
@@ -21,19 +23,26 @@ interface Entry {
   value?: unknown
 }
 
+// One registration per JDownloader device, each with its own state file and its own API key: the key JD sends
+// in clientKey is what tells the Anti-Captcha endpoints which device a task belongs to.
 export class SolverRegistration {
+  private cached?: State
+
   constructor(
     private readonly client: MyJdClient,
     private readonly deviceId: string,
-    private readonly stateFile = process.env.SOLVER_STATE_FILE ?? './data/solver.json'
+    private readonly stateFile: string
   ) {}
 
   private load(): State {
-    if (existsSync(this.stateFile)) return JSON.parse(readFileSync(this.stateFile, 'utf8')) as State
-    return { apiKey: randomBytes(24).toString('hex') }
+    if (!this.cached) {
+      this.cached = existsSync(this.stateFile) ? (JSON.parse(readFileSync(this.stateFile, 'utf8')) as State) : { apiKey: randomBytes(24).toString('hex') }
+    }
+    return this.cached
   }
 
   private save(state: State): void {
+    this.cached = state
     mkdirSync(dirname(this.stateFile), { recursive: true })
     writeFileSync(this.stateFile, JSON.stringify(state), { mode: 0o600 })
   }
@@ -41,7 +50,7 @@ export class SolverRegistration {
   // The key JD has to send in clientKey; our Anti-Captcha endpoints check it.
   get apiKey(): string {
     const state = this.load()
-    this.save(state)
+    if (!existsSync(this.stateFile)) this.save(state)
     return state.apiKey
   }
 
@@ -58,14 +67,26 @@ export class SolverRegistration {
     return this.client.callDevice(this.deviceId, '/config/set', [entry.interfaceName, entry.storage ?? null, entry.key, value])
   }
 
-  // Idempotent: only writes what differs.
-  async register(baseUrl: string): Promise<'registered' | 'unchanged'> {
+  // Idempotent: only writes what differs. Never touches a JD where the user has set up an Anti-Captcha
+  // service of their own (enabled, with a key, pointing somewhere other than here).
+  async register(baseUrl: string): Promise<'registered' | 'unchanged' | 'own service in use'> {
     const state = this.load()
     const found = await this.entries()
     const wanted: Record<Setting, unknown> = { ApiBase: baseUrl.replace(/\/+$/, ''), ApiKey: state.apiKey, Enabled: true }
-    if (SETTINGS.every((k) => found.get(k)?.value === wanted[k])) return 'unchanged'
+    const current = (k: Setting) => found.get(k)?.value
+    const ours = current('ApiBase') === wanted.ApiBase || (state.base !== undefined && current('ApiBase') === state.base)
+    if (!ours && current('Enabled') === true && typeof current('ApiKey') === 'string' && current('ApiKey') !== '') {
+      // What we saved earlier is outdated now, restoring it later would overwrite the user's own setup.
+      if (state.previous) {
+        delete state.previous
+        this.save(state)
+      }
+      return 'own service in use'
+    }
+    if (SETTINGS.every((k) => current(k) === wanted[k])) return 'unchanged'
     // Keep the original values only the first time (never overwrite them with our own).
     state.previous ??= Object.fromEntries(SETTINGS.map((k) => [k, found.get(k)?.value])) as Record<Setting, unknown>
+    state.base = wanted.ApiBase as string
     this.save(state)
     for (const k of SETTINGS) if (found.get(k)?.value !== wanted[k]) await this.set(found.get(k)!, wanted[k])
     return 'registered'
@@ -84,6 +105,7 @@ export class SolverRegistration {
 
 export interface SolverTask {
   id: number
+  deviceId: string
   type: string
   websiteURL: string
   websiteKey: string
@@ -107,9 +129,10 @@ export class SolverTasks {
     for (const [id, t] of this.tasks) if (t.created < limit) this.tasks.delete(id)
   }
 
-  create(type: string, websiteURL: string, websiteKey: string): SolverTask {
+  // One list for all devices, so the ids stay unique across devices.
+  create(deviceId: string, type: string, websiteURL: string, websiteKey: string): SolverTask {
     this.prune()
-    const task: SolverTask = { id: this.nextId++, type, websiteURL, websiteKey, created: Date.now() }
+    const task: SolverTask = { id: this.nextId++, deviceId, type, websiteURL, websiteKey, created: Date.now() }
     this.tasks.set(task.id, task)
     return task
   }
@@ -131,10 +154,10 @@ export class SolverTasks {
   }
 
   // Unsolved tasks in the shape of the captcha job list.
-  jobs(): { id: number; hoster: string; challengeType: string; remaining: number; timeout: number; kind: 'widget'; source: 'solver' }[] {
+  jobs(deviceId?: string): { id: number; hoster: string; challengeType: string; remaining: number; timeout: number; kind: 'widget'; source: 'solver' }[] {
     this.prune()
     return [...this.tasks.values()]
-      .filter((t) => !t.token)
+      .filter((t) => !t.token && (deviceId === undefined || t.deviceId === deviceId))
       .map((t) => ({
         id: t.id,
         hoster: new URL(t.websiteURL).hostname,

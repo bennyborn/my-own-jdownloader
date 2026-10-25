@@ -11,6 +11,11 @@ export class BandwidthHistory {
   private samples: SpeedSample[] = []
   private timer?: NodeJS.Timeout
   private busy = false
+  // Whether the last sample got an answer; undefined until the first one is in.
+  online: boolean | undefined
+  onChange?: (online: boolean) => void
+  // Resolves after the first sample, successful or not.
+  ready: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly client: MyJdClient,
@@ -21,7 +26,7 @@ export class BandwidthHistory {
 
   start(): void {
     if (this.timer) return
-    void this.sample()
+    this.ready = this.sample()
     this.timer = setInterval(() => void this.sample(), this.intervalMs)
   }
 
@@ -34,16 +39,24 @@ export class BandwidthHistory {
     return this.samples
   }
 
+  private setOnline(online: boolean): void {
+    const changed = this.online !== online
+    this.online = online
+    if (changed) this.onChange?.(online)
+  }
+
   private async sample(): Promise<void> {
     if (this.busy) return
     this.busy = true
     try {
       const speed = await this.client.callDevice<number>(this.deviceId, '/downloadcontroller/getSpeedInBps')
+      this.setOnline(true)
       const now = Date.now()
       this.samples.push({ t: now, v: Number.isFinite(speed) ? Math.max(0, speed) : 0 })
       const cutoff = now - this.keepMs
       while (this.samples.length && this.samples[0].t < cutoff) this.samples.shift()
     } catch {
+      this.setOnline(false)
       /* JD unreachable: leave a gap, the next sample continues the graph */
     } finally {
       this.busy = false

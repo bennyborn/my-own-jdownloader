@@ -1,0 +1,32 @@
+# Throw-away JDownloader devices for testing multi-device support.
+# They log in with the credentials from ../.env (MYJD_EMAIL / MYJD_PASSWORD) and show up as extra devices
+# on the same MyJDownloader account. Use test-devices/run.sh, which also cleans up completely.
+name: jd-test
+
+x-jd: &jd
+  image: jaymoulin/jdownloader:latest
+  environment: &jd-env
+    MYJD_USER: ${MYJD_EMAIL:?set MYJD_EMAIL in .env}
+    MYJD_PASSWORD: ${MYJD_PASSWORD:?set MYJD_PASSWORD in .env}
+    VMARGS: -Xmx256m
+  mem_limit: 768m
+  # JD exits after its first self-update (-norestart); the restart brings it back up.
+  restart: unless-stopped
+  # JDownloader's own install (~200 MB after its first self-update) and the downloads live in anonymous
+  # volumes, which `down -v` removes completely. (A small tmpfs does not work for the downloads: JD refuses to
+  # download when less than its free disk space reserve of about 1 GB is left.)
+  volumes:
+    - /opt/JDownloader/app
+    - /opt/JDownloader/Downloads
+
+services:
+  jd-test-1:
+    <<: *jd
+    environment:
+      <<: *jd-env
+      MYJD_DEVICE_NAME: jd-test-1
+  jd-test-2:
+    <<: *jd
+    environment:
+      <<: *jd-env
+      MYJD_DEVICE_NAME: jd-test-2
