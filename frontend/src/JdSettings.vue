@@ -4,6 +4,7 @@ import { Link2, RotateCcw, Search } from 'lucide-vue-next'
 import { settingsDevice } from './devices'
 import { jdConfig, jdConfigError, jdConfigState, loadJdConfig, resetJdSetting, saveJdSetting, type ConfigEntry, type ConfigGroup } from './jdconfig'
 import { showError } from './toast'
+import ProxyListEditor from './ProxyListEditor.vue'
 
 // Either a category of the core settings, or the groups to show (one plugin's settings).
 const props = defineProps<{ category?: string; title: string; groups?: ConfigGroup[] }>()
@@ -26,6 +27,8 @@ const drafts = reactive<Record<string, string>>({})
 const busy = reactive(new Set<string>())
 const idOf = (g: ConfigGroup, e: ConfigEntry) => `${g.interfaceName}\0${g.storage ?? ''}\0${e.key}`
 
+// Settings with their own editor instead of the generic fields.
+const isProxyList = (e: ConfigEntry) => e.key === 'CustomProxyList' && e.type === 'OBJECT_LIST'
 const isList = (e: ConfigEntry) => e.type === 'STRING_LIST' || e.type === 'INT_LIST'
 const isNumber = (e: ConfigEntry) => e.type === 'INT' || e.type === 'LONG' || e.type === 'DOUBLE'
 // Structured values, and any type this page does not know (a newer JDownloader): edited as raw JSON.
@@ -135,6 +138,7 @@ const reset = async (g: ConfigGroup, e: ConfigEntry) => {
         <div v-else-if="e.secret" class="secret">
           <input :id="idOf(s.group, e)" type="password" autocomplete="off" :placeholder="e.set ? 'set (type to replace)' : 'not set'" :value="drafts[idOf(s.group, e)] ?? ''" @input="drafts[idOf(s.group, e)] = ($event.target as HTMLInputElement).value" @keydown.enter="commitSecret(s.group, e)" @blur="commitSecret(s.group, e)" />
         </div>
+        <ProxyListEditor v-else-if="isProxyList(e)" :value="e.value" :busy="busy.has(idOf(s.group, e))" @save="commit(s.group, e, $event)" />
         <textarea v-else-if="isList(e) || isJson(e)" :id="idOf(s.group, e)" :rows="Math.min(8, Math.max(2, shownText(s.group, e).split('\n').length))" spellcheck="false" :value="shownText(s.group, e)" @input="drafts[idOf(s.group, e)] = ($event.target as HTMLTextAreaElement).value" @blur="commitText(s.group, e)"></textarea>
         <input v-else :id="idOf(s.group, e)" type="text" :inputmode="isNumber(e) ? 'numeric' : undefined" :value="shownText(s.group, e)" @input="drafts[idOf(s.group, e)] = ($event.target as HTMLInputElement).value" @keydown.enter="($event.target as HTMLInputElement).blur()" @blur="commitText(s.group, e)" />
         <small v-if="e.docs" class="dim">{{ e.docs }}</small>
