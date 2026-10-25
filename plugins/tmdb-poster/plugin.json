@@ -1,0 +1,23 @@
+{
+  "id": "tmdb-poster",
+  "name": "Movie & TV posters (TMDB)",
+  "description": "Shows the poster from The Movie Database on package cards. The package name must contain tmdbid=<id>, e.g. \"Some Movie (2021) [tmdbid=12345]\". Movie or series is worked out from the title, the year and hints like S01E02.",
+  "version": "1.1.0",
+  "ui": "ui.js",
+  "settings": [
+    {
+      "key": "apiKey",
+      "label": "TMDB API key",
+      "type": "password",
+      "required": true,
+      "description": "The API key (v3) or the API read access token from themoviedb.org → Settings → API."
+    },
+    {
+      "key": "language",
+      "label": "Language",
+      "type": "text",
+      "default": "en-US",
+      "description": "Language of titles and posters, e.g. de-DE."
+    }
+  ]
+}

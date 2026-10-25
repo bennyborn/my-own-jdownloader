@@ -1,0 +1,19 @@
+{
+  "id": "youtube-thumbnail",
+  "name": "YouTube thumbnails",
+  "description": "Shows the thumbnail of a YouTube video on package cards. The video is taken from the source URL of the package's links, so nothing has to be put into the package name. No API key needed.",
+  "version": "1.0.0",
+  "ui": "ui.js",
+  "settings": [
+    {
+      "key": "quality",
+      "label": "Thumbnail size",
+      "type": "select",
+      "default": "mqdefault",
+      "options": [
+        { "value": "mqdefault", "label": "Medium (320×180)" },
+        { "value": "hqdefault", "label": "High (480×360, may have black bars)" }
+      ]
+    }
+  ]
+}
