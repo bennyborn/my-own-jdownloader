@@ -54,6 +54,8 @@ const linkTarget = (l: GrabberLink): Target => ({
   variantId: l.variant?.id,
   selectedLinkIds: selected.value.has(l.uuid) && selected.value.size > 1 ? [...selected.value] : undefined
 })
+const countBy = (links: GrabberLink[], availability: string) => links.filter((l) => l.availability === availability).length
+const hasOffline = (p: { links: GrabberLink[] }) => p.links.some((l) => l.availability === 'OFFLINE')
 const isPackageDisabled = (p: { enabled: boolean; links: GrabberLink[] }) => !p.enabled || (p.links.length > 0 && p.links.every((l) => !l.enabled))
 const hostOf = (l: GrabberLink) => l.host || 'unknown'
 
@@ -252,7 +254,7 @@ const removeSelected = async () => {
       v-for="p in packages"
       :key="p.uuid"
       class="gpackage"
-      :class="[{ 'menu-open': menuOn('linkgrabber', 'package', p.uuid), disabled: isPackageDisabled(p), dragging: packageDrag.dragId.value === p.uuid }, packageDrag.dropClass(p.uuid)]"
+      :class="[{ 'menu-open': menuOn('linkgrabber', 'package', p.uuid), disabled: isPackageDisabled(p), 'has-offline': hasOffline(p), dragging: packageDrag.dragId.value === p.uuid }, packageDrag.dropClass(p.uuid)]"
       :draggable="draggablePackage === p.uuid"
       @mouseup="draggablePackage = null"
       @dragstart="packageDrag.onDragStart(p.uuid, $event)"
@@ -270,7 +272,7 @@ const removeSelected = async () => {
           <ChevronRight :size="16" class="chevron" :class="{ open: expandedGrabber.has(p.uuid) }" /><span class="pname">{{ p.name }}</span>
         </button>
         <span v-if="isPackageDisabled(p)" class="off"><PowerOff :size="13" /> disabled</span>
-        <span class="muted">{{ p.links.length }} links · {{ formatBytes(p.links.reduce((sum, l) => sum + l.bytesTotal, 0)) }}</span>
+        <span class="muted summary">{{ countBy(p.links, 'ONLINE') }} online · {{ countBy(p.links, 'OFFLINE') }} offline<template v-if="countBy(p.links, 'UNKNOWN')"> · {{ countBy(p.links, 'UNKNOWN') }} unchecked</template> · {{ formatBytes(p.links.reduce((sum, l) => sum + l.bytesTotal, 0)) }}</span>
       </div>
       <div v-if="p.saveTo" class="path" :title="p.saveTo"><Folder :size="13" /><span>{{ p.saveTo }}</span></div>
       <div class="pkg-aside"><PackageSlot name="package-aside" :pkg="p" area="linkgrabber" :device="device" /></div>
@@ -351,6 +353,7 @@ button.danger { color: #d14343; }
 .gpackage { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
 .head { display: flex; align-items: center; gap: 12px; }
 .head .name { display: flex; align-items: center; flex: 1; min-width: 0; border: 0; padding: 0; background: none; font-weight: 600; text-align: left; }
+.has-offline .pname, .has-offline .summary { color: #d14343; }
 .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .path { display: flex; align-items: center; gap: 6px; margin: 8px 0 0 28px; color: var(--muted); font-size: 0.78rem; min-width: 0; }
 .path svg { flex: none; }
