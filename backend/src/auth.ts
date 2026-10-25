@@ -7,11 +7,17 @@ const safeEqual = (a: string, b: string): boolean => {
   return bufA.length === bufB.length && timingSafeEqual(bufA, bufB)
 }
 
+const PUBLIC_ASSETS = new Set(['/logo.svg', '/manifest.webmanifest', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'])
+
 // HTTP Basic auth guarding the UI and API. Disabled if no password is configured.
 export const createAuthHook = (password: string | undefined) => {
   if (!password) return undefined
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (request.url === '/api/health') return
+    // Logo, manifest and icons: browsers fetch them without credentials (favicon, install prompt).
+    if (request.method === 'GET' && PUBLIC_ASSETS.has(request.url.split('?')[0])) return
+    // JDownloader's Anti-Captcha client cannot send Basic auth; these routes check the clientKey themselves.
+    if (request.method === 'POST' && /^\/(createTask|getTaskResult|getBalance)$/.test(request.url)) return
     const header = request.headers.authorization ?? ''
     if (header.startsWith('Basic ')) {
       const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8')

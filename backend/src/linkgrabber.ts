@@ -103,6 +103,12 @@ export class Linkgrabber {
     ])
   }
 
+  // Click'n'Load: JDownloader decrypts "crypted" itself (with jk / key), or takes plain urls.
+  // The links only go to the linkgrabber, never straight into the download list.
+  async addCnl(query: { urls?: string; crypted?: string; jk?: string; key?: string; passwords?: string[]; packageName?: string; source?: string; referrer?: string }): Promise<void> {
+    await this.call('/flash/addcnl', [{ ...query, autostart: false, permission: true }])
+  }
+
   // Adds a container file (e.g. DLC) given as a data URL.
   async addContainer(type: string, dataUrl: string): Promise<void> {
     await this.call('/linkgrabberv2/addContainer', [type, dataUrl])
@@ -111,6 +117,20 @@ export class Linkgrabber {
   // Moves the given links and/or whole packages from the linkgrabber into the download list.
   async moveToDownloads(linkIds: number[], packageIds: number[]): Promise<void> {
     await this.call('/linkgrabberv2/moveToDownloadlist', [linkIds, packageIds])
+  }
+
+  // Reorders packages in the linkgrabber. afterPackageId -1 means "to the top".
+  async movePackages(packageIds: number[], afterPackageId: number): Promise<void> {
+    await this.call('/linkgrabberv2/movePackages', [packageIds, afterPackageId])
+  }
+
+  // Reorders links inside ONE package (never moves them to another package).
+  async moveLinks(packageId: number, linkIds: number[], afterLinkId: number): Promise<void> {
+    const known = new Set((await this.getLinks()).filter((l) => l.packageUUID === packageId).map((l) => l.uuid))
+    if (!linkIds.every((id) => known.has(id)) || (afterLinkId !== -1 && !known.has(afterLinkId))) {
+      throw new Error('Links must all belong to the given package')
+    }
+    await this.call('/linkgrabberv2/moveLinks', [linkIds, afterLinkId, packageId])
   }
 
   // Merges packages: moves all links of the source packages to the end of the destination package.

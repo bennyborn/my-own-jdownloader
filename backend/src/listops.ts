@@ -2,10 +2,7 @@ import type { MyJdClient } from './myjd/client.js'
 
 export type Area = 'downloads' | 'linkgrabber'
 
-export class ConflictError extends Error {}
-
 // Write operations shared by the download list and the linkgrabber (rename, enable/disable, folder).
-// In the download list, anything that could interrupt a running download is refused.
 export class ListOps {
   constructor(
     private readonly client: MyJdClient,
@@ -19,17 +16,6 @@ export class ListOps {
 
   private call(action: string, params: unknown[]): Promise<unknown> {
     return this.client.callDevice(this.deviceId, `${this.ns}/${action}`, params)
-  }
-
-  // True if any of the given links (or any link of the given packages) is currently being downloaded.
-  private async hasRunning(linkIds: number[], packageIds: number[]): Promise<boolean> {
-    if (this.area !== 'downloads') return false
-    const query = { maxResults: -1, startAt: 0, running: true }
-    const [byLink, byPackage] = await Promise.all([
-      linkIds.length ? this.client.callDevice<{ running?: boolean }[]>(this.deviceId, `${this.ns}/queryLinks`, [{ ...query, linkUUIDs: linkIds }]) : [],
-      packageIds.length ? this.client.callDevice<{ running?: boolean }[]>(this.deviceId, `${this.ns}/queryLinks`, [{ ...query, packageUUIDs: packageIds }]) : []
-    ])
-    return [...byLink, ...byPackage].some((l) => l.running)
   }
 
   // Read-only: the URLs of a package (all its links) or of a single link.
@@ -61,19 +47,110 @@ export class ListOps {
   }
 
   async renameLink(id: number, name: string): Promise<void> {
-    if (await this.hasRunning([id], [])) throw new ConflictError('The download is running and cannot be renamed')
     await this.call('renameLink', [id, name])
   }
 
   async setEnabled(enabled: boolean, linkIds: number[], packageIds: number[]): Promise<void> {
-    if (!enabled && (await this.hasRunning(linkIds, packageIds))) {
-      throw new ConflictError('Running downloads cannot be disabled')
-    }
     await this.call('setEnabled', [enabled, linkIds, packageIds])
   }
 
   async setDirectory(directory: string, packageIds: number[]): Promise<void> {
-    if (await this.hasRunning([], packageIds)) throw new ConflictError('The package has running downloads, its folder cannot be changed')
     await this.call('setDownloadDirectory', [directory, packageIds])
+  }
+
+  // Download list only: moves all links of the source packages to the end of the destination package.
+  // Emptied packages disappear on their own.
+  async mergeInto(destPackageId: number, sourcePackageIds: number[]): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    const ids = [destPackageId, ...sourcePackageIds.filter((id) => id !== destPackageId)]
+    const links = await this.client.callDevice<{ uuid: number; packageUUID: number }[]>(this.deviceId, `${this.ns}/queryLinks`, [
+      { maxResults: -1, startAt: 0, packageUUIDs: ids }
+    ])
+    const destLinks = links.filter((l) => l.packageUUID === destPackageId)
+    const moving = links.filter((l) => l.packageUUID !== destPackageId)
+    if (!destLinks.length || !moving.length) throw new Error('Nothing to merge')
+    await this.call('moveLinks', [moving.map((l) => l.uuid), destLinks[destLinks.length - 1].uuid, destPackageId])
+  }
+
+  // Spreads the files of a package over its hosters: link 1 from host A, link 2 from host B, link 3 from
+  // host A again, ... Links with the same file name on several hosters are mirrors of one file; the
+  // mirror that is not chosen is disabled so nothing is downloaded twice. dryRun only reports the plan.
+  async interleaveHosts(packageId: number, dryRun: boolean): Promise<{ hosts: string[]; parts: number; disable: number }> {
+    type L = { uuid: number; name?: string; host?: string; enabled?: boolean; finished?: boolean }
+    const links = (await this.call('queryLinks', [
+      { maxResults: -1, startAt: 0, packageUUIDs: [packageId], name: true, host: true, enabled: true, ...(this.area === 'downloads' ? { finished: true } : {}) }
+    ])) as L[]
+    // Only links that would still be downloaded take part (finished and disabled ones stay as they are).
+    const candidates = links.filter((l) => l.enabled && !l.finished && l.host)
+    const hosts = [...new Set(candidates.map((l) => l.host!))]
+    if (hosts.length < 2) throw new Error('The package has links of only one host')
+    const files = new Map<string, L[]>()
+    for (const l of candidates) {
+      const key = (l.name ?? '').toLowerCase()
+      files.set(key, [...(files.get(key) ?? []), l])
+    }
+    if (![...files.values()].some((group) => group.length > 1)) throw new Error('No file has active mirrors on several hosters (same file name, links enabled)')
+    const keys = [...files.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    const chosen: number[] = []
+    const duplicates: number[] = []
+    keys.forEach((key, i) => {
+      const group = files.get(key)!
+      // The turn's host first; if it does not have this file, the next host that does.
+      let pick: L | undefined
+      for (let k = 0; k < hosts.length && !pick; k++) pick = group.find((l) => l.host === hosts[(i + k) % hosts.length])
+      chosen.push(pick!.uuid)
+      for (const l of group) if (l !== pick) duplicates.push(l.uuid)
+    })
+    if (!dryRun) {
+      // One call per link: the order of several ids in a single call is up to JD.
+      for (let i = 0; i < chosen.length; i++) await this.call('moveLinks', [[chosen[i]], i === 0 ? -1 : chosen[i - 1], packageId])
+      if (duplicates.length) await this.call('setEnabled', [false, duplicates, []])
+    }
+    return { hosts, parts: chosen.length, disable: duplicates.length }
+  }
+
+  // Moves packages (or links, inside their own package) to the top or the bottom of the list.
+  // The given ids keep their current relative order. Works for the download list and the linkgrabber.
+  async moveToEdge(kind: 'package' | 'link', ids: number[], position: 'top' | 'bottom'): Promise<void> {
+    const wanted = new Set(ids)
+    if (kind === 'package') {
+      const list = (await this.call('queryPackages', [{ maxResults: -1, startAt: 0 }])) as { uuid: number }[]
+      const order = list.map((p) => p.uuid)
+      const moving = order.filter((id) => wanted.has(id))
+      const rest = order.filter((id) => !wanted.has(id))
+      if (!moving.length) throw new Error('Packages not found')
+      await this.call('movePackages', [moving, position === 'top' ? -1 : (rest[rest.length - 1] ?? -1)])
+      return
+    }
+    const links = (await this.call('queryLinks', [{ maxResults: -1, startAt: 0, packageUUID: true }])) as { uuid: number; packageUUID: number }[]
+    const byPackage = new Map<number, number[]>()
+    for (const l of links) byPackage.set(l.packageUUID, [...(byPackage.get(l.packageUUID) ?? []), l.uuid])
+    let moved = 0
+    for (const [packageId, order] of byPackage) {
+      const moving = order.filter((id) => wanted.has(id))
+      if (!moving.length) continue
+      const rest = order.filter((id) => !wanted.has(id))
+      await this.call('moveLinks', [moving, position === 'top' ? -1 : (rest[rest.length - 1] ?? -1), packageId])
+      moved += moving.length
+    }
+    if (!moved) throw new Error('Links not found')
+  }
+
+  // Download list only: force-starts the given links / packages (also while the download controller is idle).
+  async startDownload(linkIds: number[], packageIds: number[]): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    await this.call('forceDownload', [linkIds, packageIds])
+  }
+
+  // Splits packages into one package per host.
+  async splitByHoster(packageIds: number[]): Promise<void> {
+    await this.call('splitPackageByHoster', [[], packageIds])
+  }
+
+  // Download list only: removes links/packages, optionally deleting the downloaded files from disk.
+  async removeFromDownloads(linkIds: number[], packageIds: number[], deleteFiles: boolean): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    if (deleteFiles) await this.call('cleanup', [linkIds, packageIds, 'DELETE_ALL', 'REMOVE_LINKS_AND_DELETE_FILES', 'SELECTED'])
+    else await this.call('removeLinks', [linkIds, packageIds])
   }
 }

@@ -17,19 +17,12 @@ interface Session {
   deviceEncryptionToken: Buffer
 }
 
-// The JDownloader is in live use: calls that could interrupt or delete running downloads
-// (the linkgrabber is deliberately not restricted)
-// are blocked unless explicitly enabled via MYJD_ALLOW_DISRUPTIVE=true.
-const DISRUPTIVE_ACTIONS = [
-  /^\/downloadcontroller\/(stop|pause|forceDownload)/i,
-  /^\/downloadsV2\/(remove|cleanup|disable|reset|stop)/i,
-  // setEnabled / setDownloadDirectory are allowed, ListOps refuses them for running downloads
-  /^\/downloadsV2\/set(?!Enabled$|DownloadDirectory$)/i,
-  // moving is only allowed for reordering (movePackages, moveLinks); the routes restrict it further
-  /^\/downloadsV2\/move(?!Packages$|Links$)/i,
-  /^\/(update|system)\/(?!getSystemInfos)/i,
-  /^\/config\/set/i
-]
+// Calls the app never needs and that could change the JDownloader itself: blocked unless explicitly
+// enabled via MYJD_ALLOW_DISRUPTIVE=true.
+const DISRUPTIVE_ACTIONS = [/^\/(update|system)\/(?!getSystemInfos)/i, /^\/config\/set/i]
+
+// The one config we write ourselves: the Anti-Captcha solver settings (see solver.ts).
+const ALLOWED_CONFIG_SET_INTERFACES = [/\.AntiCaptchaComConfigInterface$/]
 
 // Never allowed, not even with MYJD_ALLOW_DISRUPTIVE: shutting down or restarting JDownloader.
 const ALWAYS_BLOCKED_ACTIONS = [/^\/jd\/(shutdown|restart)/i, /^\/system\/(exitJD|restartJD|shutdownOS|hibernateOS|standbyOS)/i, /^\/update\/(restartAndUpdate|runUpdateCheck)/i]
@@ -98,7 +91,8 @@ export class MyJdClient {
     if (ALWAYS_BLOCKED_ACTIONS.some((re) => re.test(action))) {
       throw new Error(`Blocked API call (never allowed): ${action}`)
     }
-    if (process.env.MYJD_ALLOW_DISRUPTIVE !== 'true' && DISRUPTIVE_ACTIONS.some((re) => re.test(action))) {
+    const allowedConfigSet = /^\/config\/set$/i.test(action) && ALLOWED_CONFIG_SET_INTERFACES.some((re) => re.test(String(params[0])))
+    if (!allowedConfigSet && process.env.MYJD_ALLOW_DISRUPTIVE !== 'true' && DISRUPTIVE_ACTIONS.some((re) => re.test(action))) {
       throw new Error(`Blocked disruptive API call: ${action}`)
     }
     try {
@@ -126,7 +120,14 @@ export class MyJdClient {
       if (error instanceof MyJdApiError) throw error.withDecryptedBody(session.deviceEncryptionToken)
       throw error
     }
-    const data = JSON.parse(decrypt(text, session.deviceEncryptionToken))
+    let data: { data: T }
+    try {
+      data = JSON.parse(decrypt(text, session.deviceEncryptionToken))
+    } catch (error) {
+      // The Click'n'Load (flash) API answers in plain text, not encrypted; the call itself went through.
+      if (/^\/flash\//i.test(action)) return undefined as T
+      throw error
+    }
     return data.data as T
   }
 

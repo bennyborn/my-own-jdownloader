@@ -14,6 +14,8 @@ export interface DownloadPackage {
   bytesTotal: number
   childCount: number
   hosts: string[]
+  // Hosts of the links that are running right now (downloading, waiting or waiting for a captcha)
+  activeHosts: string[]
 }
 
 export interface DownloadsSnapshot {
@@ -167,12 +169,17 @@ export class DownloadsPoller {
         bytesLoaded: p.bytesLoaded ?? 0,
         bytesTotal: p.bytesTotal ?? 0,
         childCount: p.childCount ?? 0,
-        hosts: p.hosts ?? []
+        hosts: p.hosts ?? [],
+        activeHosts: []
       }))
       // Minimal link query (all packages) just to count links and running downloads.
-      const links = await this.client.callDevice<{ running?: boolean }[]>(this.deviceId, '/downloadsV2/queryLinks', [
-        { maxResults: -1, startAt: 0, running: true }
+      const links = await this.client.callDevice<{ running?: boolean; host?: string; packageUUID?: number }[]>(this.deviceId, '/downloadsV2/queryLinks', [
+        { maxResults: -1, startAt: 0, running: true, host: true, packageUUID: true }
       ])
+      for (const l of links) {
+        const pkg = l.running && l.host ? packages.find((p) => p.uuid === l.packageUUID) : undefined
+        if (pkg && !pkg.activeHosts.includes(l.host!)) pkg.activeHosts.push(l.host!)
+      }
       this.snapshot = {
         updatedAt: Date.now(),
         packages,
