@@ -17,16 +17,6 @@ interface Session {
   deviceEncryptionToken: Buffer
 }
 
-// Calls the app never needs and that could change the JDownloader itself: blocked unless explicitly
-// enabled via MYJD_ALLOW_DISRUPTIVE=true.
-const DISRUPTIVE_ACTIONS = [/^\/(update|system)\/(?!getSystemInfos)/i, /^\/config\/set/i]
-
-// The one config we write ourselves: the Anti-Captcha solver settings (see solver.ts).
-const ALLOWED_CONFIG_SET_INTERFACES = [/\.AntiCaptchaComConfigInterface$/]
-
-// Never allowed, not even with MYJD_ALLOW_DISRUPTIVE: shutting down or restarting JDownloader.
-const ALWAYS_BLOCKED_ACTIONS = [/^\/jd\/(shutdown|restart)/i, /^\/system\/(exitJD|restartJD|shutdownOS|hibernateOS|standbyOS)/i, /^\/update\/(restartAndUpdate|runUpdateCheck)/i]
-
 export class MyJdApiError extends Error {
   constructor(readonly status: number, readonly body: string) {
     super(`MyJDownloader API error ${status}: ${body}`)
@@ -88,13 +78,6 @@ export class MyJdClient {
   // Call an API action on a JDownloader device, e.g. callDevice(id, '/downloadsV2/queryPackages', [{...}]).
   // If the session has expired, reconnects once and retries.
   async callDevice<T = unknown>(deviceId: string, action: string, params: unknown[] = []): Promise<T> {
-    if (ALWAYS_BLOCKED_ACTIONS.some((re) => re.test(action))) {
-      throw new Error(`Blocked API call (never allowed): ${action}`)
-    }
-    const allowedConfigSet = /^\/config\/set$/i.test(action) && ALLOWED_CONFIG_SET_INTERFACES.some((re) => re.test(String(params[0])))
-    if (!allowedConfigSet && process.env.MYJD_ALLOW_DISRUPTIVE !== 'true' && DISRUPTIVE_ACTIONS.some((re) => re.test(action))) {
-      throw new Error(`Blocked disruptive API call: ${action}`)
-    }
     try {
       return await this.sendDeviceCall<T>(deviceId, action, params)
     } catch (error) {
