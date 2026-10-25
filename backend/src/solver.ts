@@ -118,7 +118,9 @@ export interface SolverTask {
 export class SolverTasks {
   static readonly TTL_MS = 10 * 60 * 1000
   private readonly tasks = new Map<number, SolverTask>()
-  private nextId = 1 // far below JD's own job ids (millisecond timestamps), so ids never collide
+  // Seconds since the epoch: below JD's own job ids (millisecond timestamps), but never repeated after a restart
+  // (clients cache what they looked up per id).
+  private nextId = Math.floor(Date.now() / 1000)
 
   static supports(type: unknown): boolean {
     return typeof type === 'string' && /^Turnstile/i.test(type)

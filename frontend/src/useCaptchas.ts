@@ -44,11 +44,13 @@ export const useCaptchas = () => {
       const res = await fetch('/api/captcha')
       if (!res.ok) return
       const fetchedAt = Date.now()
-      const list = ((await res.json()) as Omit<CaptchaJob, 'fetchedAt'>[]).map((j) => ({ ...j, fetchedAt }))
+      // Shortest time left first; all `remaining` values stem from the same response, so the order only changes when a captcha arrives or leaves.
+      const list = ((await res.json()) as Omit<CaptchaJob, 'fetchedAt'>[]).map((j) => ({ ...j, fetchedAt })).sort((a, b) => a.remaining - b.remaining || a.id - b.id)
       jobs.value = list
       for (const j of list) if (j.kind === 'widget' && !urls.value.has(j.id)) void loadUrl(j.id, j.device)
       if ([...dismissed.value].some((id) => !list.some((j) => j.id === id))) dismissed.value = new Set([...dismissed.value].filter((id) => list.some((j) => j.id === id)))
       const open = new Set(list.map((j) => j.id))
+      if ([...urls.value.keys()].some((id) => !open.has(id))) urls.value = new Map([...urls.value].filter(([id]) => open.has(id))) // ids can come back for another captcha
       if ([...handled.value].some((id) => !open.has(id))) handled.value = new Set([...handled.value].filter((id) => open.has(id)))
     } catch {
       /* the next poll retries */
