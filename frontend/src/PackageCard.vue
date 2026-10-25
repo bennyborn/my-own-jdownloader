@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ChevronRight, Folder, GripVertical, PowerOff } from 'lucide-vue-next'
-import { expandedDownloads } from './expandedState'
-import { clearHovered, changeTick, openMenu, setHovered, type Target } from './itemActions'
-import { computed, onUnmounted, ref, watch } from 'vue'
-import { formatBytes, formatEta, formatSpeed } from './format'
+import { ChevronRight, Clock, Folder, Gauge, GripVertical, HardDrive, Link2, PowerOff } from 'lucide-vue-next'
+import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
+import { showError } from './toast'
+import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } from './itemActions'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { formatBytes, formatLongEta, formatSpeed } from './format'
 import { reorderLocally, useDragReorder } from './dragReorder'
 import type { DownloadLink, DownloadPackage } from './types'
 
@@ -11,6 +12,52 @@ const props = defineProps<{ pkg: DownloadPackage }>()
 
 const expanded = ref(expandedDownloads.has(props.pkg.uuid))
 const packageDraggable = ref(false)
+// Hosts whose icon could not be loaded are shown as text instead.
+const brokenIcons = reactive(new Set<string>())
+const picked = computed(() => selectedDownloadPackages.value.has(props.pkg.uuid))
+// Marking links: click selects one, ctrl/cmd+click toggles, shift+click selects the range from the last
+// click (inside this package). Links and packages are never marked at the same time.
+const onLinkClick = (e: MouseEvent, l: DownloadLink) => {
+  const next = new Set(selectedDownloadLinks.value)
+  const ids = (links.value ?? []).map((x) => x.uuid)
+  const anchor = linkAnchor.value
+  if (e.shiftKey && anchor && anchor.package === props.pkg.uuid && ids.includes(anchor.link)) {
+    if (!(e.ctrlKey || e.metaKey)) next.clear()
+    const [from, to] = [ids.indexOf(anchor.link), ids.indexOf(l.uuid)].sort((a, b) => a - b)
+    for (const id of ids.slice(from, to + 1)) next.add(id)
+  } else if (e.ctrlKey || e.metaKey) {
+    if (!next.delete(l.uuid)) next.add(l.uuid)
+    linkAnchor.value = { package: props.pkg.uuid, link: l.uuid }
+  } else {
+    next.clear()
+    next.add(l.uuid)
+    linkAnchor.value = { package: props.pkg.uuid, link: l.uuid }
+  }
+  selectedDownloadLinks.value = next
+  if (selectedDownloadPackages.value.size) selectedDownloadPackages.value = new Set()
+}
+// Right-click on a link outside the selection selects just that link, like a file manager.
+const onLinkContext = (e: MouseEvent, l: DownloadLink) => {
+  if (!selectedDownloadLinks.value.has(l.uuid)) {
+    selectedDownloadLinks.value = new Set([l.uuid])
+    linkAnchor.value = { package: props.pkg.uuid, link: l.uuid }
+  }
+  openMenu(e, linkTarget(l))
+}
+
+// Ctrl/Cmd+click marks the package (for merging) instead of expanding it; a plain click clears the marks.
+const onHeadClick = (e: MouseEvent) => {
+  if (e.ctrlKey || e.metaKey) {
+    const next = new Set(selectedDownloadPackages.value)
+    if (!next.delete(props.pkg.uuid)) next.add(props.pkg.uuid)
+    selectedDownloadPackages.value = next
+    if (selectedDownloadLinks.value.size) selectedDownloadLinks.value = new Set()
+    return
+  }
+  if (selectedDownloadPackages.value.size) selectedDownloadPackages.value = new Set()
+  if (selectedDownloadLinks.value.size) selectedDownloadLinks.value = new Set()
+  expanded.value = !expanded.value
+}
 const links = ref<DownloadLink[] | null>(null)
 const error = ref('')
 const moveLink = async (id: number, afterId: number) => {
@@ -24,7 +71,7 @@ const moveLink = async (id: number, afterId: number) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     error.value = ''
   } catch (e) {
-    error.value = `Moving failed: ${e instanceof Error ? e.message : e}`
+    showError(`Moving failed: ${e instanceof Error ? e.message : e}`)
   }
 }
 const drag = useDragReorder(() => (links.value ?? []).map((l) => l.uuid), moveLink)
@@ -37,16 +84,46 @@ const stateOf = (x: { finished: boolean; running: boolean; enabled: boolean }) =
   x.finished ? 'finished' : x.running ? 'running' : x.enabled ? 'idle' : 'disabled'
 const state = computed(() => stateOf(props.pkg))
 
+// Tooltip with JD's full status text; nothing for the plain "Download" of a running download.
+const statusTip = (l: DownloadLink): string | undefined => {
+  const text = l.status || linkBadge(l).detail
+  return !text || (l.running && /^download$/i.test(text.trim())) ? undefined : text
+}
+
+// The state shown at the right of a link: what JD reports (captcha, wait time, skipped) replaces the
+// raw status text that used to sit next to the host.
+const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: string } => {
+  const status = l.status ?? ''
+  if (l.finished) return { kind: 'finished', text: 'finished', detail: '' }
+  if (l.skipped) return { kind: 'skipped', text: 'skipped', detail: status.replace(/^skipped\s*-\s*/i, '') }
+  if (l.running) {
+    if (/captcha/i.test(status)) return { kind: 'captcha', text: 'captcha', detail: 'waiting for an answer' }
+    const wait = /^wait\s+(.+)$/i.exec(status)
+    if (wait) return { kind: 'waiting', text: 'waiting', detail: wait[1] }
+    return { kind: 'running', text: 'running', detail: `${formatSpeed(l.speed)} · ${formatLongEta(l.eta ?? null)}` }
+  }
+  const kind = l.enabled ? 'idle' : 'disabled'
+  return { kind, text: kind, detail: status }
+}
+
 const pkgTarget = computed<Target>(() => ({
   area: 'downloads',
   kind: 'package',
   id: props.pkg.uuid,
   name: props.pkg.name,
   enabled: props.pkg.enabled,
-  running: props.pkg.running,
-  saveTo: props.pkg.saveTo
+  saveTo: props.pkg.saveTo,
+  hostCount: props.pkg.hosts.length,
+  mergeIds: picked.value && selectedDownloadPackages.value.size > 1 ? [...selectedDownloadPackages.value] : undefined
 }))
-const linkTarget = (l: DownloadLink): Target => ({ area: 'downloads', kind: 'link', id: l.uuid, name: l.name, enabled: l.enabled, running: l.running })
+const linkTarget = (l: DownloadLink): Target => ({
+  area: 'downloads',
+  kind: 'link',
+  id: l.uuid,
+  name: l.name,
+  enabled: l.enabled,
+  selectedLinkIds: selectedDownloadLinks.value.has(l.uuid) && selectedDownloadLinks.value.size > 1 ? [...selectedDownloadLinks.value] : undefined
+})
 
 const loadLinks = async () => {
   try {
@@ -69,10 +146,12 @@ watch(
     clearInterval(timer)
     if (open) {
       expandedDownloads.add(props.pkg.uuid)
+      saveExpandedDownloads()
       void loadLinks()
       timer = setInterval(loadLinks, 3000)
     } else {
       expandedDownloads.delete(props.pkg.uuid)
+      saveExpandedDownloads()
     }
   },
   { immediate: true }
@@ -83,29 +162,38 @@ onUnmounted(() => clearInterval(timer))
 <template>
   <article
     class="package"
-    :class="state"
+    :class="[state, { picked, 'menu-open': menuOn('downloads', 'package', pkg.uuid) }]"
     :draggable="packageDraggable"
     @mouseup="packageDraggable = false"
     @pointerenter="setHovered(pkgTarget)"
     @pointerleave="clearHovered(pkgTarget)"
     @contextmenu="openMenu($event, pkgTarget)"
   >
-    <button class="head" :aria-expanded="expanded" @click="expanded = !expanded">
+    <button class="head" :aria-expanded="expanded" @click="onHeadClick">
       <GripVertical :size="16" class="grip" title="Drag to reorder" @mousedown.stop="packageDraggable = true" @touchstart.passive="packageDraggable = true" />
       <ChevronRight :size="16" class="chevron" :class="{ open: expanded }" />
-      <h2>{{ pkg.name }}</h2>
+      <h2 :title="pkg.name">{{ pkg.name }}</h2>
       <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
       <span v-else class="badge">{{ state }}</span>
     </button>
     <div v-if="pkg.saveTo" class="path" :title="pkg.saveTo"><Folder :size="13" /><span>{{ pkg.saveTo }}</span></div>
     <div class="bar"><div class="fill" :style="{ width: percent + '%' }" /></div>
     <div class="row meta">
-      <span>{{ formatBytes(pkg.bytesLoaded) }} / {{ formatBytes(pkg.bytesTotal) }} ({{ percent.toFixed(1) }}%)</span>
-      <span v-if="pkg.running">{{ formatSpeed(pkg.speed) }} · ETA {{ formatEta(pkg.eta) }}</span>
-      <span>{{ pkg.childCount }} links</span>
-      <span v-if="pkg.hosts.length">{{ pkg.hosts.join(', ') }}</span>
+      <span class="item" title="Loaded / total size">
+        <HardDrive :size="14" />{{ formatBytes(pkg.bytesLoaded) }} <span class="dim">/ {{ formatBytes(pkg.bytesTotal) }} ({{ percent.toFixed(1) }}%)</span>
+      </span>
+      <span v-if="pkg.running" class="item">
+        <span class="item" title="Download speed"><Gauge :size="14" />{{ formatSpeed(pkg.speed) }}</span>
+        <span class="item" title="Finished in"><Clock :size="14" />{{ formatLongEta(pkg.eta ?? null) }}</span>
+      </span>
+      <span class="item" title="Links"><Link2 :size="14" />{{ pkg.childCount }}</span>
+      <span v-if="pkg.hosts.length" class="hosts">
+        <template v-for="h in pkg.hosts" :key="h">
+          <img v-if="!brokenIcons.has(h)" class="hosticon" :class="{ idle: pkg.hosts.length > 1 && pkg.activeHosts.length > 0 && !pkg.activeHosts.includes(h) }" :src="`/api/icons/${h}`" :title="h" :alt="h" width="16" height="16" loading="lazy" @error="brokenIcons.add(h)" />
+          <span v-else>{{ h }}</span>
+        </template>
+      </span>
     </div>
-    <div v-if="pkg.status" class="meta status">{{ pkg.status }}</div>
 
     <div v-if="expanded" class="links">
             <p v-if="error" class="meta">Could not load links: {{ error }}</p>
@@ -114,12 +202,13 @@ onUnmounted(() => clearInterval(timer))
         v-for="l in links ?? []"
         :key="l.uuid"
         class="link"
-        :class="[stateOf(l), drag.dropClass(l.uuid), { dragging: drag.dragId.value === l.uuid }]"
+        :class="[stateOf(l), drag.dropClass(l.uuid), { dragging: drag.dragId.value === l.uuid, picked: selectedDownloadLinks.has(l.uuid), 'menu-open': menuOn('downloads', 'link', l.uuid) }]"
         :style="{ '--p': percentOf(l.bytesLoaded, l.bytesTotal) + '%' }"
         :title="l.name"
         @pointerenter="setHovered(linkTarget(l))"
         @pointerleave="setHovered(pkgTarget)"
-        @contextmenu.stop="openMenu($event, linkTarget(l))"
+        @contextmenu.stop="onLinkContext($event, l)"
+        @click="onLinkClick($event, l)"
         draggable="true"
         @dragstart.stop="drag.onDragStart(l.uuid, $event)"
         @dragover.stop="drag.onDragOver(l.uuid, $event)"
@@ -130,16 +219,16 @@ onUnmounted(() => clearInterval(timer))
           <span class="name">{{ l.name }}</span>
           <span class="sub">
             <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="14" height="14" loading="lazy" @error="($event.target as HTMLElement).style.display = 'none'" />
-            {{ [l.host, l.status].filter(Boolean).join(' · ') }}
+            {{ l.host }}
           </span>
         </div>
         <div class="cell size">
           <span>{{ formatBytes(l.bytesTotal) }}</span>
           <span class="sub">{{ l.running ? formatBytes(l.bytesLoaded) + ' loaded' : '' }}</span>
         </div>
-        <div class="cell state">
-          <span class="badge">{{ l.skipped ? 'skipped' : stateOf(l) }}</span>
-          <span class="sub">{{ l.running ? `${formatSpeed(l.speed)} · ${formatEta(l.eta)}` : '' }}</span>
+        <div class="cell state" :title="statusTip(l)">
+          <span class="badge" :class="linkBadge(l).kind">{{ linkBadge(l).text }}</span>
+          <span class="sub">{{ linkBadge(l).detail }}</span>
         </div>
         <div class="pbar"><div class="pfill" /><span>{{ percentOf(l.bytesLoaded, l.bytesTotal).toFixed(0) }}%</span></div>
       </div>
@@ -161,7 +250,7 @@ onUnmounted(() => clearInterval(timer))
   text-align: left;
   cursor: pointer;
 }
-.head h2 { flex: 1; }
+.head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chevron { flex: none; transition: transform 0.15s; color: var(--muted); }
 .chevron.open { transform: rotate(90deg); }
 .toolbar { display: flex; justify-content: flex-end; }
@@ -169,6 +258,17 @@ onUnmounted(() => clearInterval(timer))
 .path svg { flex: none; }
 .path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.75rem; }
+.link .badge.captcha, .link .badge.skipped { color: #e0a030; }
+.link .badge.waiting { color: var(--muted); }
+.meta.row { align-items: center; }
+.item { display: inline-flex; align-items: center; gap: 5px; }
+.item .item { gap: 5px; margin-right: 12px; }
+.item .item:last-child { margin-right: 0; }
+.dim { color: var(--muted); }
+.hosts { display: inline-flex; align-items: center; gap: 8px; }
+.hosticon { border-radius: 3px; transition: opacity 0.3s; }
+.hosticon.idle { opacity: 0.3; }
+.package.picked { outline: 2px solid var(--accent); outline-offset: -1px; }
 .package:not(.finished):not(.running).disabled { border-style: dashed; }
 .grip { cursor: grab; color: var(--muted); user-select: none; }
 .dragging { opacity: 0.4; }
@@ -188,7 +288,10 @@ onUnmounted(() => clearInterval(timer))
   line-height: 1.3;
 }
 .link + .link { border-top: 1px solid var(--border); }
-.link:hover { background-color: var(--hover); }
+.link { user-select: none; }
+.link:hover, .link.menu-open { background-color: var(--hover); }
+.link.picked { background-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+.package.menu-open { border-color: var(--accent); }
 .link.disabled { opacity: 0.55; }
 .link .main, .link .cell { display: flex; flex-direction: column; min-width: 0; }
 .link .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

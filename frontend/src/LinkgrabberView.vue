@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ChevronRight, CircleCheck, CircleHelp, CircleX, Folder, Inbox, PowerOff, Loader, PackagePlus, Trash2, X } from 'lucide-vue-next'
+import { ChevronRight, GripVertical, CircleCheck, CircleHelp, CircleX, Folder, Inbox, PowerOff, Loader, PackagePlus, Trash2, X } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 import { askConfirm } from './confirm'
+import { useDragReorder } from './dragReorder'
 import { expandedGrabber } from './expandedState'
 import { formatBytes } from './format'
-import { clearHovered, openMenu, setHovered, type Target } from './itemActions'
+import { showError } from './toast'
+import { clearHovered, menuOn, movedTick, openMenu, setHovered, type Target } from './itemActions'
 import type { GrabberLink, GrabberState } from './types'
 
 const props = defineProps<{ state: GrabberState | null; analysing: boolean }>()
@@ -14,7 +16,6 @@ const selected = ref<Set<number>>(new Set()) // selected link uuids
 const hostFilter = ref<Set<string>>(new Set())
 const extFilter = ref<Set<string>>(new Set())
 const busy = ref(false)
-const message = ref('')
 let lastClicked: number | null = null // anchor for shift+click range selection
 
 const NO_EXT = '(none)'
@@ -31,11 +32,20 @@ const packageTarget = (p: { uuid: number; name: string; enabled: boolean; saveTo
   id: p.uuid,
   name: p.name,
   enabled: p.enabled,
-  running: false,
   saveTo: p.saveTo,
-  mergeIds: markedPackageIds().includes(p.uuid) && markedPackageIds().length > 1 ? markedPackageIds() : undefined
+  // unfiltered, so the host filter does not hide the other hosts
+  hostCount: new Set(allLinks.value.filter((l) => l.packageUUID === p.uuid).map((l) => l.host)).size,
+  mergeIds: markedPackageIds().includes(p.uuid) && markedPackageIds().length > 1 ? markedPackageIds() : undefined,
+  selectedLinkIds: markedPackageIds().includes(p.uuid) && selected.value.size > 1 ? [...selected.value] : undefined
 })
-const linkTarget = (l: GrabberLink): Target => ({ area: 'linkgrabber', kind: 'link', id: l.uuid, name: l.name, enabled: l.enabled, running: false })
+const linkTarget = (l: GrabberLink): Target => ({
+  area: 'linkgrabber',
+  kind: 'link',
+  id: l.uuid,
+  name: l.name,
+  enabled: l.enabled,
+  selectedLinkIds: selected.value.has(l.uuid) && selected.value.size > 1 ? [...selected.value] : undefined
+})
 const isPackageDisabled = (p: { enabled: boolean; links: GrabberLink[] }) => !p.enabled || (p.links.length > 0 && p.links.every((l) => !l.enabled))
 const hostOf = (l: GrabberLink) => l.host || 'unknown'
 
@@ -73,6 +83,16 @@ const clearFilters = () => {
   extFilter.value = new Set()
 }
 
+// Forget open packages that are gone from the linkgrabber (only once its list has arrived).
+watch(
+  () => props.state?.packages,
+  (list) => {
+    if (!list?.length) return
+    const ids = new Set(list.map((p) => p.uuid))
+    if ([...expandedGrabber.value].some((id) => !ids.has(id))) expandedGrabber.value = new Set([...expandedGrabber.value].filter((id) => ids.has(id)))
+  }
+)
+
 // Selection only ever covers visible links, so hidden links are never moved or removed by accident.
 watch(visibleLinks, (links) => {
   const visible = new Set(links.map((l) => l.uuid))
@@ -108,6 +128,34 @@ const toggleExpanded = (id: number) => {
   expandedGrabber.value = next
 }
 
+// Manual reordering: packages by their grip, links within their own package.
+const post = async (url: string, body: unknown) => {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    emit('changed')
+  } catch (e) {
+    showError(`Moving failed: ${e instanceof Error ? e.message : e}`)
+  }
+}
+const draggablePackage = ref<number | null>(null)
+const packageDrag = useDragReorder(
+  () => packages.value.map((p) => p.uuid),
+  (id, afterId) => void post('/api/linkgrabber/packages/move', { packageIds: [id], afterPackageId: afterId })
+)
+let linkDragPackage: number | null = null
+const linkDrag = useDragReorder(
+  () => packages.value.find((p) => p.uuid === linkDragPackage)?.links.map((l) => l.uuid) ?? [],
+  (id, afterId) => void post(`/api/linkgrabber/packages/${linkDragPackage}/links/move`, { linkIds: [id], afterLinkId: afterId })
+)
+const onLinkDragStart = (packageId: number, linkId: number, event: DragEvent) => {
+  linkDragPackage = packageId
+  linkDrag.onDragStart(linkId, event)
+}
+const onLinkDragOver = (packageId: number, linkId: number, event: DragEvent) => {
+  if (packageId === linkDragPackage) linkDrag.onDragOver(linkId, event)
+}
+
 const allState = computed(() => selectionState(visibleLinks.value))
 const selectOnline = () => (selected.value = new Set(visibleLinks.value.filter((l) => l.availability === 'ONLINE').map((l) => l.uuid)))
 const checkboxState = (el: HTMLInputElement | null, state: string) => {
@@ -116,7 +164,6 @@ const checkboxState = (el: HTMLInputElement | null, state: string) => {
 
 const act = async (route: 'move-to-downloads' | 'remove') => {
   busy.value = true
-  message.value = ''
   try {
     const res = await fetch(`/api/linkgrabber/${route}`, {
       method: 'POST',
@@ -125,9 +172,10 @@ const act = async (route: 'move-to-downloads' | 'remove') => {
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     selected.value = new Set()
+    if (route === 'move-to-downloads') movedTick.value++
     emit('changed')
   } catch (e) {
-    message.value = `Failed: ${e instanceof Error ? e.message : e}`
+    showError(`Failed: ${e instanceof Error ? e.message : e}`)
   } finally {
     busy.value = false
   }
@@ -154,7 +202,6 @@ const removeSelected = async () => {
         {{ filtersActive ? 'All shown' : 'All' }}
       </label>
       <button type="button" :disabled="!visibleLinks.length" @click="selectOnline"><CircleCheck :size="14" /> Select online</button>
-      <span v-if="analysing" class="muted analysing"><Loader :size="14" class="spin" /> Analysing links…</span>
       <span class="spacer" />
       <button type="button" class="danger" :disabled="busy || !selected.size" @click="removeSelected"><Trash2 :size="14" /> Remove</button>
       <button type="button" class="primary" :disabled="busy || !selected.size" @click="moveSelected"><PackagePlus :size="14" /> To downloads ({{ selected.size }})</button>
@@ -176,7 +223,6 @@ const removeSelected = async () => {
       </div>
       <button v-if="filtersActive" type="button" class="clear" @click="clearFilters"><X :size="13" /> Clear filters</button>
     </div>
-    <p v-if="message" class="muted">{{ message }}</p>
 
     <p v-if="!state" class="muted">Loading…</p>
     <div v-else-if="!allLinks.length && !analysing" class="empty">
@@ -190,15 +236,22 @@ const removeSelected = async () => {
       v-for="p in packages"
       :key="p.uuid"
       class="gpackage"
-      :class="{ disabled: isPackageDisabled(p) }"
+      :class="[{ 'menu-open': menuOn('linkgrabber', 'package', p.uuid), disabled: isPackageDisabled(p), dragging: packageDrag.dragId.value === p.uuid }, packageDrag.dropClass(p.uuid)]"
+      :draggable="draggablePackage === p.uuid"
+      @mouseup="draggablePackage = null"
+      @dragstart="packageDrag.onDragStart(p.uuid, $event)"
+      @dragover="packageDrag.onDragOver(p.uuid, $event)"
+      @drop="packageDrag.onDrop($event)"
+      @dragend="packageDrag.onDragEnd(); draggablePackage = null"
       @pointerenter="setHovered(packageTarget(p))"
       @pointerleave="clearHovered(packageTarget(p))"
       @contextmenu="openMenu($event, packageTarget(p))"
     >
       <div class="head">
+        <GripVertical :size="16" class="grip" title="Drag to reorder" @mousedown.stop="draggablePackage = p.uuid" @touchstart.passive="draggablePackage = p.uuid" />
         <input type="checkbox" :checked="selectionState(p.links) === 'all'" :ref="(el) => checkboxState(el as HTMLInputElement, selectionState(p.links))" @change="togglePackage(p.links)" />
-        <button type="button" class="name" @click="toggleExpanded(p.uuid)">
-          <ChevronRight :size="16" class="chevron" :class="{ open: expandedGrabber.has(p.uuid) }" />{{ p.name }}
+        <button type="button" class="name" :title="p.name" @click="toggleExpanded(p.uuid)">
+          <ChevronRight :size="16" class="chevron" :class="{ open: expandedGrabber.has(p.uuid) }" /><span class="pname">{{ p.name }}</span>
         </button>
         <span v-if="isPackageDisabled(p)" class="off"><PowerOff :size="13" /> disabled</span>
         <span class="muted">{{ p.links.length }} links · {{ formatBytes(p.links.reduce((sum, l) => sum + l.bytesTotal, 0)) }}</span>
@@ -212,7 +265,12 @@ const removeSelected = async () => {
           @pointerenter="setHovered(linkTarget(l))"
           @pointerleave="setHovered(packageTarget(p))"
           @contextmenu.stop="openMenu($event, linkTarget(l))"
-          :class="{ disabled: !l.enabled, checking: analysing && l.availability === 'UNKNOWN', picked: selected.has(l.uuid) }"
+          :class="[{ disabled: !l.enabled, checking: analysing && l.availability === 'UNKNOWN', picked: selected.has(l.uuid), 'menu-open': menuOn('linkgrabber', 'link', l.uuid), dragging: linkDrag.dragId.value === l.uuid }, linkDrag.dropClass(l.uuid)]"
+          draggable="true"
+          @dragstart.stop="onLinkDragStart(p.uuid, l.uuid, $event)"
+          @dragover.stop="onLinkDragOver(p.uuid, l.uuid, $event)"
+          @drop.stop="linkDrag.onDrop($event)"
+          @dragend.stop="linkDrag.onDragEnd()"
           :title="l.url"
           @click="onLinkClick($event, l)"
         >
@@ -239,7 +297,6 @@ const removeSelected = async () => {
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 55vh; color: var(--muted); text-align: center; }
 .empty p { margin: 8px 0 0; font-size: 1.1rem; color: var(--text); }
 .muted { color: var(--muted); font-size: 0.85rem; }
-.analysing { display: inline-flex; align-items: center; gap: 6px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 button {
@@ -273,15 +330,18 @@ button.danger { color: #d14343; }
 .off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.75rem; }
 .gpackage { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
 .head { display: flex; align-items: center; gap: 12px; }
-.head .name { flex: 1; min-width: 0; border: 0; padding: 0; background: none; font-weight: 600; text-align: left; overflow-wrap: anywhere; }
+.head .name { display: flex; align-items: center; flex: 1; min-width: 0; border: 0; padding: 0; background: none; font-weight: 600; text-align: left; }
+.pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .path { display: flex; align-items: center; gap: 6px; margin: 8px 0 0 28px; color: var(--muted); font-size: 0.78rem; min-width: 0; }
 .path svg { flex: none; }
 .path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grip { flex: none; cursor: grab; color: var(--muted); user-select: none; }
 .chevron { flex: none; color: var(--muted); transition: transform 0.15s; }
 .chevron.open { transform: rotate(90deg); }
 .glinks { margin-top: 14px; display: grid; }
 .glink { display: grid; grid-template-columns: 18px minmax(0, 1fr) 110px 80px 20px; gap: 14px; align-items: center; padding: 10px 8px; font-size: 0.85rem; cursor: pointer; user-select: none; }
-.glink:hover { background: var(--hover); }
+.glink:hover, .glink.menu-open { background: var(--hover); }
+.gpackage.menu-open { border-color: var(--accent); }
 .glink.picked { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .glink + .glink { border-top: 1px solid var(--border); }
 .glink.disabled { opacity: 0.55; }

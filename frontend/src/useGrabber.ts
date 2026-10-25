@@ -47,6 +47,12 @@ export const useGrabber = (visible: Ref<boolean>) => {
     void loop()
   }
 
+  // Drops the "analysing" state again, e.g. when adding failed and nothing new will show up.
+  const cancelBoost = () => {
+    clearTimeout(boostTimer)
+    boosting.value = false
+  }
+
   onMounted(loop)
   onUnmounted(() => {
     stopped = true
@@ -54,5 +60,5 @@ export const useGrabber = (visible: Ref<boolean>) => {
     clearTimeout(boostTimer)
   })
 
-  return { state, error, reload: load, boost, analysing, linkCount }
+  return { state, error, reload: load, boost, cancelBoost, analysing, linkCount }
 }
