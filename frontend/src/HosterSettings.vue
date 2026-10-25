@@ -96,6 +96,6 @@ select { padding: 7px 10px; background: var(--bg); color: var(--text); border: 1
 .open .chevron { transform: rotate(90deg); }
 .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .kind { padding: 1px 8px; border-radius: 999px; background: var(--hover); color: var(--muted); font-size: 0.72rem; }
-.count { min-width: 2ch; color: var(--muted); font-size: 0.8rem; text-align: right; }
+.count { min-width: 2ch; text-align: center; }
 .body { padding: 0 12px 12px; }
 </style>

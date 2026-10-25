@@ -256,7 +256,7 @@ onUnmounted(() => clearInterval(timer))
         <div class="main">
           <span class="name" :title="l.name">{{ l.name }}</span>
           <span class="sub">
-            <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="14" height="14" loading="lazy" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
+            <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="10" height="10" loading="lazy" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
             {{ l.host }}
           </span>
         </div>
