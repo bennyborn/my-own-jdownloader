@@ -9,6 +9,9 @@ dem MyJDownloader-Dienst. Unser Projekt spricht dessen öffentliche API an.
 - **Weg A:** neues UI auf der bestehenden MyJDownloader-API (api.jdownloader.org).
   Keine Änderung am JDownloader nötig (außer den Einstellungen für den Captcha-Solver, siehe unten).
 - **Stack:** TypeScript, Node-Backend (Fastify), Frontend in **Vue.js** (Vue 3, Vite), Docker.
+- **Mehrere Geräte:** Das Backend hält pro JDownloader-Gerät einen eigenen Kontext (`devices.ts`: Poller, Linkgrabber,
+  Captchas, Verlauf, Konten, Config, eigener Anti-Captcha-`ApiKey`). Anfragen wählen das Gerät mit `?device=<id>`
+  (oder `device` im Body), sonst gilt das Standardgerät. `MYJD_DEVICES` schränkt die Geräte ein, `MYJD_DEVICE` setzt das Standardgerät.
 - **Backend nötig**, weil: Requests sind AES-128-CBC-verschlüsselt und HMAC-SHA256-signiert,
   Sessions laufen ab (Reconnect), CORS blockiert vermutlich den direkten Browser-Zugriff,
   die API hat kein Push (das Backend pollt und reicht per SSE weiter).
@@ -30,8 +33,8 @@ Browser-Extension <--REST--> Backend            (JDownloader --Anti-Captcha-Prot
 - **Login-Schutz:** HTTP Basic mit `UI_PASSWORD` für UI und API. Ausgenommen sind nur das Logo, das Web-App-Manifest
   und die Icons (Browser holen sie ohne Zugangsdaten) sowie die Anti-Captcha-Aufrufe von JD, die sich über ihren
   `clientKey` ausweisen. Mit gesetztem Passwort noch nicht ausprobiert.
-- **Schutz des JDownloaders:** Der API-Client sperrt `/system`, `/update`, `/config/set` (Ausnahme: nur die
-  Anti-Captcha-Einstellungen, siehe unten) und, auch mit `MYJD_ALLOW_DISRUPTIVE=true`, Shutdown/Restart des JD.
+- **Schutz des JDownloaders:** Der API-Client sperrt nichts mehr (1:1-Kompatibilität mit MyJDownloader,
+  auch `/config/set`, `/system` und `/update` gehen durch).
   Die früheren Sperren für laufende Downloads (Umbenennen, Entfernen, Merge … nur ohne laufenden Download) sind bewusst
   entfernt: Die Aktionen gehen jetzt immer durch.
 
@@ -43,8 +46,9 @@ Browser-Extension <--REST--> Backend            (JDownloader --Anti-Captcha-Prot
 | 2 | Backend-Schicht | REST, SSE, Polling der Downloadliste, Fehlerbehandlung | fertig |
 | 3 | Basis-UI (MVP) | Downloadliste mit Paketen, Geschwindigkeit, Fortschritt, Umsortieren | fertig |
 | 4 | Linkgrabber | Links einfügen, Pakete prüfen, in Downloads verschieben | fertig |
-| 5 | Extras | Einstellungen, mehrere Geräte, Mobilansicht | offen |
-| 6 | Docker/Deployment | Container, Login-Schutz, Doku | Container und Login-Schutz fertig, Doku offen |
+| 5 | Extras | Einstellungen, mehrere Geräte, Mobilansicht | Einstellungen, Konten und mehrere Geräte fertig; Mobilansicht und Regel-Editoren offen |
+| 6 | Docker/Deployment | Container, Login-Schutz, Doku | Container, Login-Schutz und Entwickler-Doku (`DEVELOPER.md`) fertig, Nutzer-Doku offen |
+| – | Plugins, MCP | siehe unten | umgesetzt |
 | – | Captcha | siehe unten | umgesetzt |
 | – | Click'n'Load, Extension | siehe unten | umgesetzt (Chrome) |
 
@@ -98,7 +102,7 @@ Domain bleibt, der Token ist daran gebunden), darauf rendert das Widget mit dem 
 ist das nicht möglich, weil der Token an die Domain des Hosters gebunden ist.
 
 - **Eintragung in JD:** nur wenn `JD_SOLVER_URL` gesetzt ist (Adresse, unter der JD das Backend erreicht, in der `.env`).
-  Die vorherigen Werte liegen in `data/solver.json` im Volume, `backend/src/solver-restore.ts` setzt sie zurück.
+  Pro Gerät liegen die vorherigen Werte in `data/solver-<Geräte-ID>.json` im Volume (das Standardgerät übernimmt eine alte `data/solver.json`), `backend/src/solver-restore.ts [Gerätename ...]` setzt sie zurück. JD setzt sich dabei nicht auf eine fremde Anti-Captcha-Einrichtung (ein eigener aktiver Dienst bleibt unberührt).
 - **Grenzen:** Tasks aus dem Anti-Captcha-Endpunkt liegen nur im Speicher (Neustart = weg), JDs Wartezeit auf den Token
   ist unbekannt, reCAPTCHA v3 ist nicht abgedeckt, Firefox braucht ein eigenes Manifest (`background.scripts`).
 
@@ -114,6 +118,25 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 - Das Ergebnis erscheint in unserem Stil: in Hilfsfenstern ersetzt die Karte die ganze Seite, sonst steht sie unten rechts.
   Mit Logo, Paket-/Link-/Größenzähler und "Open linkgrabber". Ein-/ausschaltbar in den Einstellungen der Extension.
 
+## Einstellungen, Konten, Plugins, MCP (umgesetzt)
+
+- **Einstellungen** (`SettingsView.vue`): Seite "JDownloader" wird aus `/config/list` des Geräts erzeugt (`jdconfig.ts`), schreibt
+  mit `/config/set` und `/config/reset`, Geheimnisse gehen nie ans UI. Pro Hoster/Plugin eine eigene, durchsuchbare Seite (`HosterSettings.vue`).
+  Details in `DEVELOPER.md`.
+- **Konten** (`accounts.ts`, `AccountSettings.vue`): Premium-Konten pro Gerät über `/accountsV2` (Liste, hinzufügen, entfernen,
+  an/aus, Status, Restlaufzeit und Traffic). Passwörter gehen nur zum Gerät.
+- **Plugins** (`plugins.ts`, `plugins/`): vertrauter Code in einem Ordner, Backend-Teil plus Vue-Komponente für feste Blöcke
+  im UI. Beispiele: `tmdb-poster` (Poster am Paket), `youtube-thumbnail`. Siehe `DEVELOPER.md`.
+- **MCP-Server** (`mcp.ts`, `mcplog.ts`) auf `/mcp`: dieselben Dienste für einen Assistenten, Einstellungen werden gesucht statt gelistet.
+  Schreibende Tools nur mit `MCP_WRITE=true` (oder Schalter auf der Einstellungsseite), nichts zum Stoppen/Pausieren/Löschen von Downloads.
+  Aufrufe lassen sich auf der Einstellungsseite mitschneiden.
+- **Download-Liste:** Entpack-Status pro Paket/Link, Archiv-Einstellungen und "Extract now", "Reset", Varianten-Auswahl im Linkgrabber
+  (z. B. YouTube-Qualitäten), Erfolgsmeldung, wenn ein Paket fertig ist.
+- **Mehrere Geräte im UI:** Geräteauswahl (`DevicePicker.vue`), Übersicht über alle Geräte, Gerät beim Hinzufügen von Links,
+  Captchas aller Geräte; Extension und Click'n'Load wählen das Gerät (Standard, feste Wahl oder "jedes Mal fragen").
+  Mit zwei Test-JDownloadern geprüft (`test-devices/run.sh`).
+- **Container:** Der Host-Port kommt aus `APP_PORT` (`.env`), im Container läuft die App immer auf 3000. `./plugins` wird eingebunden.
+
 ## Status
 
 - **Phasen 1–4 sind umgesetzt.** Dazu:
@@ -125,17 +148,35 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
     Drag-and-drop-Upload von Container-Dateien und Links, Hoster-Icons mit aktiven Hostern, gemerkte aufgeklappte Pakete.
   - Captcha (alle drei Arten), Click'n'Load, Extension mit Popup (Gerätekarte, Graph, Captchas), Benachrichtigungen.
   - Container, UI-Login (`UI_PASSWORD`).
-- **Offen:** Rest von Phase 5 (Einstellungen, mehrere Geräte, Mobilansicht) und Phase 6 (Doku).
+  - Einstellungen, Konten, mehrere Geräte, Plugins, MCP (siehe oben).
+- **Offen:** Mobilansicht, die Lücken unter TODO und die Nutzer-Doku (Phase 6).
 
 ## TODO
 
-- Multiple devices (phase 5) also has to cover the other parts that talk to *one* JDownloader today:
-  - Click'n'Load: let the user choose the target device (the extension's request has no device; options: a default device in the
-    extension settings, plus a device choice on the result card / a small chooser when there are several).
-  - Browser extension popup: one card per device already planned; "Open" has to open the web UI with that device selected.
-  - Captchas: the list, the image dialog and the Anti-Captcha endpoint need the device. JDs registered with our Anti-Captcha
-    server must be told apart (own `ApiKey` per device) so a task is shown for, and answered to, the right JDownloader.
-  - Drag and drop upload and the add-links dialog: choose the device the links go to.
+- Gaps against MyJDownloader, derived from the JD settings (the generic Settings > JDownloader page already covers every
+  plain value; these need their own UI because the value is a table, a list of rules or an action). Accounts, per-plugin
+  settings and multiple devices are done:
+  - Rule editors (today only raw JSON): link filter (`LinkFilterSettings.FilterList`), packagizer (`PackagizerSettings.RuleList`),
+    hoster rules (`HosterRuleConfig.Rules`; they need the accounts, which exist now), filename / package name replace maps (`FilenameReplaceMap`, `PackagenameReplaceMap`,
+    `FilenameTooLongRegexReplaceMap`), domain rules (`DomainRules`), custom proxies (`InternetConnectionSettings.CustomProxyList`).
+  - Plugin blacklists (`CrawlerHostPluginBlacklist`, `CrawlerCrawlerPluginBlacklist`) as a picker (the per-plugin settings pages exist).
+  - Quick controls in the status bar instead of a trip to the settings: speed limit on/off and value (`DownloadSpeedLimit*`),
+    max. simultaneous downloads, pause with its speed (`PauseSpeed`), silent mode (`SilentModeSettings.ManualEnabled`),
+    free disk space (`ForcedFreeSpaceOnDisk`, storage infos).
+  - Linkgrabber toolbar: toggles for auto confirm / auto start (`LinkgrabberAutoConfirmEnabled`, `LinkgrabberAutoStartEnabled`),
+    quick filters by hoster and file type (`LinkFilterSettings.*Quickfilter*`), handling of offline, duplicate and incomplete archive
+    links (`DefaultOnAdded*LinksAction`, `Handle*OnConfirmLatestSelection`).
+  - Add-links dialog: the options JD's own dialog has (priority, auto extract, archive passwords, packagizer override,
+    duplicates, destination and package name history `DownloadDestinationHistory`, `PackageNameHistory`), with the JD defaults.
+  - Reconnect: "Reconnect now", the current IP, the active method (`ReconnectConfig.ActivePluginID`) and its settings
+    (LiveHeader scripts, UPnP).
+  - Extraction: password list editor (`ExtractionConfig.PasswordList`, one per line works today), the blacklist patterns, and
+    something for the dialogs JD would show (unknown archive password, file exists); check whether the API can answer JD dialogs.
+  - Updates: show whether one is available and run it (`/update/*`), JD version in the settings header.
+  - Settings page itself: readable German/English labels and units for the important keys (many values are milliseconds or
+    bytes), "restart needed" hints, a filter "only changed", expert settings folded away, export/import of the JD config.
+  - Unknown to check against the original: whether MyJDownloader offers anything beyond this (e.g. log upload, scheduler,
+    RSS-like link sources); compare with the original's menu once.
 - Backend start: if api.jdownloader.org is unreachable the process exits and Docker restarts it in a loop (seen once). Retry with
   a delay instead, ideally with the server already listening and a "MyJDownloader not reachable" page.
 - Web UI notifications only work over https or on localhost (not on `http://server:port`); document it, or put the UI behind a
@@ -143,6 +184,7 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 - Browser extension: Firefox manifest (`background.scripts` instead of `service_worker`); revise the design of the captcha page.
 - Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
 - Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
+- Mobile layout (phase 5) is still open; only a few `@media` rules exist.
 - Show "open connections" metric in the status bar (API call still unknown).
 - Resolve more plugin-internal URLs (only YouTube has been checked).
 - Tested against the real JDownloader (checked = confirmed by the user):
