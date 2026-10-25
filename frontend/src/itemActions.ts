@@ -15,6 +15,7 @@ export interface Target {
   enabled: boolean
   running?: boolean // downloads: a download is running right now (no point in offering "Start")
   finished?: boolean
+  stopMarked?: boolean // downloads: JD's stop mark sits on this item
   saveTo?: string
   hostCount?: number
   // Linkgrabber packages: ids of all fully selected packages (including this one) when at least two are selected.
@@ -253,6 +254,17 @@ export const startDownload = async (t: Target) => {
   }
 }
 
+// Download list: JD's stop mark (one at most): it stops before the marked link / package. Setting it moves it from where it was.
+export const toggleStopMark = async (t: Target) => {
+  closeMenu()
+  try {
+    if (t.stopMarked) await run(() => post(t, '/api/downloads/stop-mark/remove', {}))
+    else await run(() => post(t, '/api/downloads/stop-mark', t.kind === 'package' ? { packageId: t.id } : { linkId: t.id }))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
 // Download list: starts the extraction of the archive(s) the package(s) or link(s) belong to.
 export const startExtraction = async (t: Target) => {
   closeMenu()
@@ -316,6 +328,16 @@ export const interleaveHosts = async (t: Target) => {
     })
     if (!ok) return
     await run(() => post(t, `/api/${t.area}/interleave`, { packageId: t.id, dryRun: false }))
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// Package: orders its links alphabetically by file name.
+export const sortLinks = async (t: Target) => {
+  closeMenu()
+  try {
+    await run(() => post(t, `/api/${t.area}/sort-links`, { packageId: t.id }))
   } catch (e) {
     actionError.value = e instanceof Error ? e.message : String(e)
   }

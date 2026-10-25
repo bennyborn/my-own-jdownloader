@@ -123,6 +123,16 @@ export class ListOps {
     return { hosts, parts: chosen.length, disable: duplicates.length }
   }
 
+  // Orders the links of a package alphabetically by file name (numbers by value: "part2" before "part10").
+  async sortLinks(packageId: number): Promise<{ links: number }> {
+    const links = (await this.call('queryLinks', [{ maxResults: -1, startAt: 0, packageUUIDs: [packageId], name: true }])) as { uuid: number; name?: string }[]
+    if (links.length < 2) throw new Error('The package has fewer than two links')
+    const sorted = [...links].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', undefined, { numeric: true, sensitivity: 'base' }))
+    // One call per link: the order of several ids in a single call is up to JD.
+    for (let i = 0; i < sorted.length; i++) await this.call('moveLinks', [[sorted[i].uuid], i === 0 ? -1 : sorted[i - 1].uuid, packageId])
+    return { links: sorted.length }
+  }
+
   // Moves packages (or links, inside their own package) to the top or the bottom of the list.
   // The given ids keep their current relative order. Works for the download list and the linkgrabber.
   async moveToEdge(kind: 'package' | 'link', ids: number[], position: 'top' | 'bottom'): Promise<void> {
@@ -154,6 +164,17 @@ export class ListOps {
   async startDownload(linkIds: number[], packageIds: number[]): Promise<void> {
     if (this.area !== 'downloads') throw new Error('Only supported for the download list')
     await this.call('forceDownload', [linkIds, packageIds])
+  }
+
+  // Download list only: JD's stop mark (one at most) goes on a link or on a package; setting it moves it from where it was.
+  async setStopMark(linkId: number | undefined, packageId: number | undefined): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    await this.call('setStopMark', [linkId ?? -1, packageId ?? -1])
+  }
+
+  async removeStopMark(): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    await this.call('removeStopMark', [])
   }
 
   // Download list only: the archives JD recognises among the given links / packages (none for plain files),

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { toneIcon } from './iconTone'
 import { withDevice } from './devices'
-import { ChevronRight, Clock, Folder, Gauge, GripVertical, HardDrive, Link2, PowerOff } from 'lucide-vue-next'
+import { ChevronRight, Clock, Folder, Gauge, GripVertical, HardDrive, Link2, PowerOff, OctagonPause, Zap } from 'lucide-vue-next'
 import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages, selectedPackagesDevice } from './expandedState'
 import { showError } from './toast'
 import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } from './itemActions'
@@ -123,6 +123,9 @@ const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: strin
   return { kind, text: kind, detail: status }
 }
 
+// Force-started links get a bolt before the status, except once they are finished or failed.
+const showForced = (l: DownloadLink) => !!l.forced && !l.finished && !['finished', 'extracted', 'extract-failed'].includes(linkBadge(l).kind)
+
 const pkgTarget = computed<Target>(() => ({
   area: 'downloads',
   device: props.device,
@@ -132,6 +135,7 @@ const pkgTarget = computed<Target>(() => ({
   enabled: props.pkg.enabled,
   running: props.pkg.running,
   finished: props.pkg.finished,
+  stopMarked: props.pkg.stopMarked,
   saveTo: props.pkg.saveTo,
   hostCount: props.pkg.hosts.length,
   mergeIds: picked.value && selectedDownloadPackages.value.size > 1 ? [...selectedDownloadPackages.value] : undefined
@@ -145,6 +149,7 @@ const linkTarget = (l: DownloadLink): Target => ({
   enabled: l.enabled,
   running: l.running,
   finished: l.finished,
+  stopMarked: l.stopMarked,
   selectedLinkIds: selectedDownloadLinks.value.has(l.uuid) && selectedDownloadLinks.value.size > 1 ? [...selectedDownloadLinks.value] : undefined
 })
 
@@ -196,6 +201,7 @@ onUnmounted(() => clearInterval(timer))
       <GripVertical :size="16" class="grip" title="Drag to reorder" @mousedown.stop="packageDraggable = true" @touchstart.passive="packageDraggable = true" />
       <ChevronRight :size="16" class="chevron" :class="{ open: expanded }" />
       <h2 :title="pkg.name">{{ pkg.name }}</h2>
+      <OctagonPause v-if="pkg.stopMarked" :size="15" class="stopmark" title="Stop mark: JD stops before this package" />
       <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
       <span v-else class="badge">{{ state === 'extract-failed' ? 'extract failed' : state }}</span>
     </button>
@@ -255,7 +261,7 @@ onUnmounted(() => clearInterval(timer))
           <span class="sub">{{ l.running ? formatBytes(l.bytesLoaded) + ' loaded' : '' }}</span>
         </div>
         <div class="cell state" :title="statusTip(l)">
-          <span class="badge" :class="linkBadge(l).kind">{{ linkBadge(l).text }}</span>
+          <span class="badge" :class="linkBadge(l).kind"><OctagonPause v-if="l.stopMarked" :size="12" class="stopmark" aria-label="Stop mark" /><Zap v-if="showForced(l)" :size="12" class="forced" aria-label="Force-started" />{{ linkBadge(l).text }}</span>
           <span class="sub">{{ linkBadge(l).detail }}</span>
         </div>
         <div class="pbar"><div class="pfill" /><span>{{ stateOf(l) === 'extracting' ? 'unpacking' : percentOf(l.bytesLoaded, l.bytesTotal).toFixed(0) + '%' }}</span></div>
@@ -288,6 +294,9 @@ onUnmounted(() => clearInterval(timer))
 .off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.75rem; }
 .link .badge.captcha, .link .badge.skipped { color: #e0a030; }
 .link .badge.waiting { color: var(--muted); }
+.head .stopmark { flex: none; color: #e0a030; }
+.link .badge .stopmark { margin-right: 4px; vertical-align: -1px; color: #e0a030; }
+.link .badge .forced { margin-right: 4px; vertical-align: -1px; color: #e0a030; }
 .link .badge.extracting { color: var(--extract-text); }
 .link .badge.extracted { color: var(--ok); }
 .link .badge.extract-failed { color: #d14343; }

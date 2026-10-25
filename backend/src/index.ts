@@ -290,6 +290,15 @@ app.post<{ Params: { area: string }; Body: { packageId?: unknown; dryRun?: unkno
   return dev(request).listOps[area].interleaveHosts(packageId as number, dryRun)
 })
 
+app.post<{ Params: { area: string }; Body: { packageId?: unknown } }>('/api/:area/sort-links', async (request, reply) => {
+  const { area } = request.params
+  const { packageId } = request.body ?? {}
+  if ((area !== 'downloads' && area !== 'linkgrabber') || !Number.isSafeInteger(packageId)) {
+    return reply.code(400).send({ error: 'Invalid request' })
+  }
+  return dev(request).listOps[area].sortLinks(packageId as number)
+})
+
 app.post<{ Params: { area: string }; Body: { kind?: unknown; ids?: unknown; position?: unknown } }>('/api/:area/move-to-edge', async (request, reply) => {
   const { area } = request.params
   const { kind, position } = request.body ?? {}
@@ -305,7 +314,22 @@ app.post<{ Body: { linkIds?: unknown; packageIds?: unknown } }>('/api/downloads/
   const linkIds = idList(request.body?.linkIds ?? [])
   const packageIds = idList(request.body?.packageIds ?? [])
   if (!linkIds || !packageIds || linkIds.length + packageIds.length === 0) return reply.code(400).send({ error: 'Invalid request' })
-  await dev(request).listOps.downloads.startDownload(linkIds, packageIds)
+  const { listOps, poller } = dev(request)
+  await listOps.downloads.startDownload(linkIds, packageIds)
+  poller.markForced(linkIds, packageIds)
+  return { ok: true }
+})
+
+app.post<{ Body: { linkId?: unknown; packageId?: unknown } }>('/api/downloads/stop-mark', async (request, reply) => {
+  const { linkId, packageId } = request.body ?? {}
+  const valid = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0
+  if (valid(linkId) === valid(packageId)) return reply.code(400).send({ error: 'Invalid request' })
+  await dev(request).listOps.downloads.setStopMark(valid(linkId) ? linkId : undefined, valid(packageId) ? packageId : undefined)
+  return { ok: true }
+})
+
+app.post('/api/downloads/stop-mark/remove', async (request) => {
+  await dev(request).listOps.downloads.removeStopMark()
   return { ok: true }
 })
 

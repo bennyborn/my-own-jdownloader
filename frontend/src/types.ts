@@ -16,6 +16,7 @@ export interface DownloadPackage {
   childCount: number
   hosts: string[]
   activeHosts: string[]
+  stopMarked?: boolean // JD stops before this package
 }
 
 export interface DownloadsSnapshot {
@@ -40,6 +41,8 @@ export interface DownloadLink {
   eta?: number
   bytesLoaded: number
   bytesTotal: number
+  forced?: boolean // force-started and not finished yet
+  stopMarked?: boolean // JD stops at this link
 }
 
 export interface GrabberLink {

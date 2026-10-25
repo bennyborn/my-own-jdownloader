@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ArchiveRestore, RotateCcw, Check, ArrowDownToLine, ArrowUpToLine, Folder, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
+import { ArchiveRestore, RotateCcw, Check, ArrowDownToLine, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { closeMenu, menu, menuArchives, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleArchiveSetting, interleaveHosts, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
+import { closeMenu, menu, menuArchives, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
 const target = computed(() => menu.value?.target)
 // Starting only makes sense for what is waiting: not for a running or a finished download (JD has no per-download pause).
@@ -65,6 +65,11 @@ onUnmounted(() => {
           <Play :size="15" /> Start download
         </button>
       </li>
+      <li v-if="target.area === 'downloads' && !target.finished && !target.selectedLinkIds">
+        <button type="button" role="menuitem" @click="toggleStopMark(target)">
+          <OctagonPause :size="15" style="color: #e0a030" /> {{ target.stopMarked ? 'Remove stop mark' : 'Set stop mark here' }}
+        </button>
+      </li>
       <li v-if="menuArchives.length">
         <button type="button" role="menuitem" :disabled="!canExtract" :title="canExtract ? undefined : 'Not all parts are downloaded yet'" @click="startExtraction(target)">
           <ArchiveRestore :size="15" /> Extract now
@@ -85,7 +90,7 @@ onUnmounted(() => {
           <Merge :size="15" /> Merge {{ target.mergeIds.length }} packages here
         </button>
       </li>
-      <li v-if="stopsRunning || canStart || menuArchives.length || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1)" class="sep" role="separator" />
+      <li v-if="stopsRunning || canStart || menuArchives.length || (target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1)" class="sep" role="separator" />
       <li>
         <button type="button" role="menuitem" @click="startRename(target)">
           <Pencil :size="15" /> Rename <kbd>F2</kbd>
@@ -114,6 +119,11 @@ onUnmounted(() => {
       <li v-if="target.kind === 'package' && (target.hostCount ?? 0) > 1">
         <button type="button" role="menuitem" @click="interleaveHosts(target)">
           <Shuffle :size="15" /> Interleave hosters…
+        </button>
+      </li>
+      <li v-if="target.kind === 'package'">
+        <button type="button" role="menuitem" @click="sortLinks(target)">
+          <ArrowDownAZ :size="15" /> Sort links alphabetically
         </button>
       </li>
       <template v-if="menuArchives.length">

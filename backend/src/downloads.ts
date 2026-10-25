@@ -28,6 +28,7 @@ export interface DownloadPackage {
   hosts: string[]
   // Hosts of the links that are running right now (downloading, waiting or waiting for a captcha)
   activeHosts: string[]
+  stopMarked?: boolean // JD stops before this package's downloads (a stop mark sits on the package itself)
 }
 
 export interface DownloadsSnapshot {
@@ -52,6 +53,8 @@ export interface DownloadLink {
   eta?: number
   bytesLoaded: number
   bytesTotal: number
+  forced?: boolean // force-started through us and not finished yet
+  stopMarked?: boolean // JD stops at this link
 }
 
 type Listener = (snapshot: DownloadsSnapshot) => void
@@ -88,8 +91,40 @@ export class DownloadsPoller {
     }
   }
 
+  // JD's API does not say which links were force-started, so we remember what was forced through us (until the backend restarts).
+  private readonly forcedLinks = new Map<number, number>() // link uuid -> time of the force
+  private readonly forcedPackages = new Map<number, number>()
+
+  markForced(linkIds: number[], packageIds: number[]): void {
+    const now = Date.now()
+    for (const id of linkIds) this.forcedLinks.set(id, now)
+    for (const id of packageIds) this.forcedPackages.set(id, now)
+  }
+
+  // A forced item that is neither running nor finished shortly after the force was dropped by JD, so the mark ends there.
+  private isForced(l: { uuid: number; running: boolean; finished: boolean }, packageUuid: number): boolean {
+    const since = this.forcedLinks.get(l.uuid) ?? this.forcedPackages.get(packageUuid)
+    if (since === undefined) return false
+    if (l.finished || (!l.running && Date.now() - since > 30_000)) {
+      this.forcedLinks.delete(l.uuid)
+      return false
+    }
+    return true
+  }
+
+  // Read-only: uuid of the link or package carrying JD's stop mark (there is at most one); -1 when there is none.
+  private async getStopMark(): Promise<number> {
+    try {
+      const mark = await this.client.callDevice<number>(this.deviceId, '/downloadsV2/getStopMark', [])
+      return typeof mark === 'number' ? mark : -1
+    } catch {
+      return -1
+    }
+  }
+
   // Read-only: links (parts) of a single package.
   async getLinks(packageUuid: number): Promise<DownloadLink[]> {
+    const stopMark = await this.getStopMark()
     const raw = await this.client.callDevice<(Partial<DownloadLink> & { extractionStatus?: string })[]>(this.deviceId, '/downloadsV2/queryLinks', [
       {
         packageUUIDs: [packageUuid],
@@ -121,7 +156,9 @@ export class DownloadsPoller {
       speed: l.speed ?? 0,
       eta: l.eta,
       bytesLoaded: l.bytesLoaded ?? 0,
-      bytesTotal: l.bytesTotal ?? 0
+      bytesTotal: l.bytesTotal ?? 0,
+      forced: this.isForced({ uuid: l.uuid ?? 0, running: l.running ?? false, finished: l.finished ?? false }, packageUuid),
+      stopMarked: l.uuid !== undefined && l.uuid === stopMark
     }))
   }
 
@@ -160,6 +197,7 @@ export class DownloadsPoller {
     if (this.polling) return
     this.polling = true
     try {
+      const stopMark = await this.getStopMark()
       const raw = await this.client.callDevice<Partial<DownloadPackage>[]>(
         this.deviceId,
         '/downloadsV2/queryPackages',
@@ -195,7 +233,8 @@ export class DownloadsPoller {
         bytesTotal: p.bytesTotal ?? 0,
         childCount: p.childCount ?? 0,
         hosts: p.hosts ?? [],
-        activeHosts: []
+        activeHosts: [],
+        stopMarked: p.uuid !== undefined && p.uuid === stopMark
       }))
       // Minimal link query (all packages) just to count links and running downloads.
       const links = await this.client.callDevice<{ running?: boolean; host?: string; packageUUID?: number; extractionStatus?: string; status?: string }[]>(this.deviceId, '/downloadsV2/queryLinks', [
