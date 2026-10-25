@@ -185,6 +185,7 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 - Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
 - Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
 - Mobile layout (phase 5) is still open; only a few `@media` rules exist.
+  - Open the context menu by long touch (there is no right click on a phone).
 - Show "open connections" metric in the status bar (API call still unknown).
 - Resolve more plugin-internal URLs (only YouTube has been checked).
 - Tested against the real JDownloader (checked = confirmed by the user):
