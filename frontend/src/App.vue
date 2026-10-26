@@ -21,6 +21,7 @@ import ToastHost from './ToastHost.vue'
 import { progress, showError } from './toast'
 import AddLinksModal from './AddLinksModal.vue'
 import LinkgrabberView from './LinkgrabberView.vue'
+import CnlToggle from './CnlToggle.vue'
 import NotifyToggle from './NotifyToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import SettingsView from './SettingsView.vue'
@@ -216,11 +217,12 @@ const dragFor = (device: string) => {
       <button type="button" :class="{ active: tab === 'grabber' }" @click="tab = 'grabber'">
         <Link2 :size="16" /><span class="label">Linkgrabber</span><span v-if="grabber.linkCount.value" class="count">{{ grabber.linkCount.value }}</span>
       </button>
-      <button type="button" :class="{ active: tab === 'settings' }" @click="tab = 'settings'"><Settings :size="16" /><span class="label">Settings</span></button>
       <button v-if="multiple" type="button" class="device-tab" :class="{ active: devicesOpen }" @click="devicesOpen = true">
         <span class="logo" aria-hidden="true" /><span class="label">Devices</span>
       </button>
+      <button type="button" :class="{ active: tab === 'settings' }" @click="tab = 'settings'"><Settings :size="16" /><span class="label">Settings</span></button>
     </nav>
+    <CnlToggle />
     <NotifyToggle />
     <DevicePicker v-if="multiple" class="header-picker" :model-value="showingAll ? ALL : currentDevice" with-all @update:model-value="select" />
     <ThemeToggle />
@@ -393,6 +395,7 @@ nav button.active {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 nav .device-tab { display: none; }
+main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 /* Phones: the tabs become a bottom bar within thumb reach; the status bar floats above it. */
 :root { --tabbar-h: 0px; }
 @media (max-width: 640px) {
@@ -413,7 +416,8 @@ nav .device-tab { display: none; }
   .logo { width: 16px; height: 16px; background: currentColor; mask: url(/logo-outline.svg) center / contain no-repeat; }
   h1 { margin-right: auto; }
   header { flex-wrap: nowrap; gap: 8px; }
-  main { padding-bottom: calc(190px + var(--tabbar-h) + var(--sheet-h, 0px)); }
+  /* Room for the floating status bar (24px above the tab bar), and below the last package the same gap as above the first one (28px). */
+  main { padding-bottom: calc(var(--tabbar-h) + 24px + var(--statusbar-h, 100px) + 28px + var(--sheet-h, 0px)); }
   .status-wrap.hidden { display: none; }
   main:has(.settings) { padding-bottom: calc(24px + var(--tabbar-h)); }
 }
@@ -428,7 +432,6 @@ h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .tab-enter-from { opacity: 0; transform: translateY(8px); }
 .tab-leave-to { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .tab-enter-active, .tab-leave-active { transition: none; } }
-main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .error { color: #d14343; text-align: center; }
 .dragging { opacity: 0.4; }
 .drop-before { box-shadow: 0 -3px 0 var(--accent); }

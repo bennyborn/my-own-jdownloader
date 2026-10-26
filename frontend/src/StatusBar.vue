@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { inApp, solveInApp } from './appBridge'
 import { withDevice } from './devices'
 import { Clock, Download, Link2, Package, Plus, ShieldCheck } from 'lucide-vue-next'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
 import SpeedGraph, { type SpeedSample } from './SpeedGraph.vue'
 import type { DownloadsSnapshot } from './types'
@@ -9,6 +10,13 @@ import type { CaptchaJob } from './useCaptchas'
 
 const props = defineProps<{ snapshot: DownloadsSnapshot | null; connected: boolean; solverJobs: CaptchaJob[]; device: string }>()
 defineEmits<{ addLinks: [] }>()
+
+// In the app the solver is a native screen, in a browser the extension reacts to the link.
+const openSolver = (e: Event) => {
+  if (!inApp || !props.solverJobs[0]) return
+  e.preventDefault()
+  solveInApp(props.solverJobs[0])
+}
 
 const WINDOW_SECONDS = 300
 
@@ -38,6 +46,19 @@ const prefill = async () => {
   }
 }
 onMounted(prefill)
+
+// The page needs to know how tall the bar is (it floats over the end of the list): --statusbar-h, kept up to date.
+const bar = ref<HTMLElement>()
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  if (!bar.value || typeof ResizeObserver === 'undefined') return
+  observer = new ResizeObserver(() => document.documentElement.style.setProperty('--statusbar-h', `${bar.value?.offsetHeight ?? 0}px`))
+  observer.observe(bar.value)
+})
+onUnmounted(() => {
+  observer?.disconnect()
+  document.documentElement.style.removeProperty('--statusbar-h')
+})
 watch(() => props.device, prefill)
 
 watch(
@@ -60,7 +81,7 @@ const totals = computed(() => {
 
 <template>
   <div class="fade" aria-hidden="true" />
-  <footer class="statusbar">
+  <footer ref="bar" class="statusbar">
     <SpeedGraph :samples="samples" :window-seconds="WINDOW_SECONDS" />
     <button type="button" class="fab" title="Add links" aria-label="Add links" @click="$emit('addLinks')"><Plus :size="24" /></button>
     <div class="content">
@@ -86,7 +107,7 @@ const totals = computed(() => {
           </dd>
         </div>
       </dl>
-      <a v-if="solverJobs[0]?.openUrl" class="solve" :href="solverJobs[0].openUrl" target="_blank" rel="noopener" :title="`${solverJobs[0].hoster} waits for a captcha`">
+      <a v-if="solverJobs[0]?.openUrl" class="solve" :href="solverJobs[0].openUrl" target="_blank" rel="noopener" :title="`${solverJobs[0].hoster} waits for a captcha`" @click="openSolver">
         <ShieldCheck :size="15" /> Solve captcha<span v-if="solverJobs.length > 1" class="count">{{ solverJobs.length }}</span>
       </a>
       <span class="dot" :class="{ on: connected }" :title="connected ? 'connected' : 'disconnected'" />

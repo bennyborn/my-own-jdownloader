@@ -383,6 +383,8 @@ onUnmounted(() => clearInterval(timer))
 }
 /* Phones: compact card; the link row is one line (host icon, name, percent). */
 @media (max-width: 640px) {
+  .grip { display: none; } /* no dragging on a phone: "Move" is in the context menu */
+  .head .chevron { margin-left: -5px; } /* the arrow sits flush with the bar below (the icon has an inner margin) */
   .head { align-items: flex-start; }
   .head h2 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
   .package:not(.open) .path { display: none; }

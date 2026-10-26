@@ -380,6 +380,7 @@ button.danger { color: #d14343; }
 .lcell { display: grid; gap: 2px; min-width: 0; }
 .variant { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.78rem; }
 @media (max-width: 640px) { .marquee { text-overflow: clip !important; } }
+@media (max-width: 640px) { .grip { display: none; } } /* no dragging on a phone: "Move" is in the context menu */
 .lname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
