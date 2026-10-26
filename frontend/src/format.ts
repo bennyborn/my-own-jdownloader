@@ -7,13 +7,16 @@ export const formatBytes = (bytes: number): string => {
 
 export const formatSpeed = (bytesPerSecond: number): string => `${formatBytes(bytesPerSecond)}/s`
 
+// Every unit after the first one has two digits (5h:05m), like a clock.
+const pad = (n: number): string => String(n).padStart(2, '0')
+
 export const formatEta = (seconds?: number): string => {
   if (seconds === undefined || seconds <= 0) return '–'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
+  if (h > 0) return `${h}h ${pad(m)}m`
+  if (m > 0) return `${m}m ${pad(s)}s`
   return `${s}s`
 }
 
@@ -33,7 +36,7 @@ export const formatLongEta = (seconds: number | null): string => {
   const d = Math.floor(seconds / 86400)
   const h = Math.floor((seconds % 86400) / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  if (d > 0) return `${d}d:${h}h:${m}m`
-  if (h > 0) return `${h}h:${m}m`
-  return `${m}m:${Math.floor(seconds % 60)}s`
+  if (d > 0) return `${d}d:${pad(h)}h:${pad(m)}m`
+  if (h > 0) return `${h}h:${pad(m)}m`
+  return `${m}m:${pad(Math.floor(seconds % 60))}s`
 }
