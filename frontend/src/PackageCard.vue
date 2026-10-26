@@ -8,6 +8,7 @@ import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } f
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import PackageSlot from './PackageSlot.vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
+import { coarsePointer, longPress } from './longPress'
 import { reorderLocally, useDragReorder } from './dragReorder'
 import type { DownloadLink, DownloadPackage, Extraction } from './types'
 
@@ -194,9 +195,13 @@ onUnmounted(() => clearInterval(timer))
 <template>
   <article
     class="package"
+    :data-item="`downloads:package:${pkg.uuid}`"
     :class="[state, { open: expanded, picked, 'menu-open': menuOn('downloads', 'package', pkg.uuid) }]"
     :draggable="packageDraggable"
     @mouseup="packageDraggable = false"
+    @touchend="packageDraggable = false"
+    @touchcancel="packageDraggable = false"
+    @pointerdown="longPress($event, () => openMenu($event, pkgTarget))"
     @pointerenter="setHovered(pkgTarget)"
     @pointerleave="clearHovered(pkgTarget)"
     @contextmenu="openMenu($event, pkgTarget)"
@@ -240,6 +245,7 @@ onUnmounted(() => clearInterval(timer))
         v-for="l in links ?? []"
         :key="l.uuid"
         class="link"
+        :data-item="`downloads:link:${l.uuid}`"
         :class="[stateOf(l), drag.dropClass(l.uuid), { dragging: drag.dragId.value === l.uuid, picked: selectedDownloadLinks.has(l.uuid), 'menu-open': menuOn('downloads', 'link', l.uuid) }]"
         :style="{ '--p': percentOf(l.bytesLoaded, l.bytesTotal) + '%' }"
         :title="l.name"
@@ -247,7 +253,8 @@ onUnmounted(() => clearInterval(timer))
         @pointerleave="setHovered(pkgTarget)"
         @contextmenu.stop="onLinkContext($event, l)"
         @click="onLinkClick($event, l)"
-        draggable="true"
+        :draggable="!coarsePointer"
+        @pointerdown.stop="longPress($event, () => onLinkContext($event, l))"
         @dragstart.stop="drag.onDragStart(l.uuid, $event)"
         @dragover.stop="drag.onDragOver(l.uuid, $event)"
         @drop.stop="drag.onDrop($event)"
@@ -320,6 +327,7 @@ onUnmounted(() => clearInterval(timer))
 .drop-before { box-shadow: 0 -3px 0 var(--accent); }
 .drop-after { box-shadow: 0 3px 0 var(--accent); }
 .link[draggable=true] { cursor: grab; }
+.package { -webkit-touch-callout: none; }
 .links { margin-top: 10px; display: grid; }
 .link {
   display: grid;
@@ -333,7 +341,7 @@ onUnmounted(() => clearInterval(timer))
   line-height: 1.3;
 }
 .link + .link { border-top: 1px solid var(--border); }
-.link { user-select: none; }
+.link { user-select: none; -webkit-touch-callout: none; }
 .link:hover, .link.menu-open { background-color: var(--hover); }
 .link.picked { background-color: color-mix(in srgb, var(--accent) 14%, transparent); }
 .package.menu-open { border-color: var(--accent); }
@@ -356,14 +364,6 @@ onUnmounted(() => clearInterval(timer))
   .link { grid-template-columns: minmax(0, 1fr) 90px; }
   .link .size, .link .state { display: none; }
 }
-</style>
-
-<!-- Not scoped: the contents of the aside block come from plugins. -->
-<style>
-.package:has(> .pkg-aside > *), .gpackage:has(> .pkg-aside > *) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
-.package:has(> .pkg-aside > *) > *, .gpackage:has(> .pkg-aside > *) > * { grid-column: 1; }
-.package:has(> .pkg-aside > *) > .pkg-aside, .gpackage:has(> .pkg-aside > *) > .pkg-aside { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
-.package:has(> .pkg-aside > *) > .links, .gpackage:has(> .pkg-aside > *) > .glinks { grid-column: 1 / -1; }
 /* Phones: compact card; the link row is one line (host icon, name, percent). */
 @media (max-width: 640px) {
   .head { align-items: flex-start; }
@@ -378,6 +378,14 @@ onUnmounted(() => clearInterval(timer))
   .link .hostname { display: none; }
   .link .sub .hosticon { width: 16px; height: 16px; margin: 0; vertical-align: middle; }
 }
-.pkg-aside:not(:has(> *)) { display: none; }
 </style>
+
+<!-- Not scoped: the contents of the aside block come from plugins. -->
+<style>
+.package:has(> .pkg-aside > *), .gpackage:has(> .pkg-aside > *) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
+.package:has(> .pkg-aside > *) > *, .gpackage:has(> .pkg-aside > *) > * { grid-column: 1; }
+.package:has(> .pkg-aside > *) > .pkg-aside, .gpackage:has(> .pkg-aside > *) > .pkg-aside { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
+.package:has(> .pkg-aside > *) > .links, .gpackage:has(> .pkg-aside > *) > .glinks { grid-column: 1 / -1; }
+.pkg-aside:not(:has(> *)) { display: none; }
 @media (max-width: 640px) { .pkg-aside > * { width: 44px !important; height: 64px !important; } }
+</style>

@@ -63,8 +63,13 @@ export interface ArchiveInfo {
 // Download list: the archives JD recognises for the item the menu is open on (none hides the archive entries).
 export const menuArchives = ref<ArchiveInfo[]>([])
 
+let openedAt = 0
 export const openMenu = (event: MouseEvent, target: Target) => {
   event.preventDefault()
+  // A long touch can raise both our timer and the browser's contextmenu event: the second one is ignored.
+  const open = menu.value?.target
+  if (open && open.kind === target.kind && open.id === target.id && Date.now() - openedAt < 1000) return
+  openedAt = Date.now()
   menu.value = { x: event.clientX, y: event.clientY, target }
   menuArchives.value = []
   if (target.area !== 'downloads') return
@@ -82,6 +87,22 @@ export const openMenu = (event: MouseEvent, target: Target) => {
     .catch(() => {
       /* no archive entry then */
     })
+}
+// Scrolls the page just enough to bring the item into view (centred in the free area); bottomLimit is the lower
+// edge of that area, by default the top of the status bar. Scrolling closes the menu, except for a moment after this.
+let ignoreScrollUntil = 0
+export const scrollIgnored = () => Date.now() < ignoreScrollUntil
+export const revealItem = (t: Target, bottomLimit?: number) => {
+  const el = document.querySelector<HTMLElement>(`[data-item="${t.area}:${t.kind}:${t.id}"]`)
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const top = 8
+  const free = document.querySelector('.menu.sheet') ?? document.querySelector('.statusbar') // the open sheet or the status bar covers the bottom
+  const bottom = bottomLimit ?? (free?.getBoundingClientRect().top ?? window.innerHeight) - 8
+  if (rect.top >= top && rect.bottom <= bottom) return
+  const room = bottom - top
+  ignoreScrollUntil = Date.now() + 500
+  window.scrollBy({ top: rect.top - top - (rect.height >= room ? 0 : (room - rect.height) / 2) })
 }
 export const closeMenu = () => (menu.value = null)
 // True for the package / link a context menu is currently open for (it keeps its hover look).

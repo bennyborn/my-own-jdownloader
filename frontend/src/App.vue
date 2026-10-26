@@ -394,7 +394,7 @@ nav .device-tab { display: none; }
   .logo { width: 16px; height: 16px; background: currentColor; mask: url(/logo-outline.svg) center / contain no-repeat; }
   h1 { margin-right: auto; }
   header { flex-wrap: nowrap; gap: 8px; }
-  main { padding-bottom: calc(190px + var(--tabbar-h)); }
+  main { padding-bottom: calc(190px + var(--tabbar-h) + var(--sheet-h, 0px)); }
 }
 .count { background: var(--accent); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 0.72rem; line-height: 1.5; }
 h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }

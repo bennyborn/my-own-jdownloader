@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArchiveRestore, RotateCcw, Check, ArrowDownToLine, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { closeMenu, menu, menuArchives, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
+import { closeMenu, menu, revealItem, scrollIgnored, menuArchives, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
 const target = computed(() => menu.value?.target)
 // Starting only makes sense for what is waiting: not for a running or a finished download (JD has no per-download pause).
@@ -11,11 +11,23 @@ const canStart = computed(() => target.value?.area === 'downloads' && !target.va
 
 // Keep the menu inside the viewport: it is placed at the pointer first, then moved by its measured size.
 const menuEl = ref<HTMLElement | null>(null)
+// Phones: the menu slides in from the bottom edge at full width instead of opening at the pointer.
+const phoneQuery = window.matchMedia('(max-width: 640px)')
+const sheet = ref(phoneQuery.matches)
+const onPhoneChange = () => (sheet.value = phoneQuery.matches)
 const position = ref<{ left: string; top: string; visibility?: 'hidden' }>({ left: '0px', top: '0px', visibility: 'hidden' })
 watch(
   menu,
   async (m) => {
     if (!m) return
+    if (sheet.value) {
+      // Page padding for the sheet, so the item can be scrolled above it; then bring the item into the free part.
+      await nextTick()
+      const height = menuEl.value?.offsetHeight ?? 0
+      document.documentElement.style.setProperty('--sheet-h', `${height}px`)
+      revealItem(m.target, window.innerHeight - height - 8)
+      return
+    }
     position.value = { left: `${m.x}px`, top: `${m.y}px`, visibility: 'hidden' }
     await nextTick()
     const width = menuEl.value?.offsetWidth ?? 240
@@ -38,23 +50,30 @@ const canExtract = computed(() => menuArchives.value.some((a) => a.complete))
 const archiveOn = (key: (typeof archiveOptions)[number]['key']) => menuArchives.value.every((a) => a.settings[key])
 
 const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeMenu()
+// The sheet scrolls on its own, and the address bar of a phone browser fires resize events: neither may close it.
+const onScroll = (e: Event) => !scrollIgnored() && !menuEl.value?.contains(e.target as Node) && closeMenu()
+watch(menu, (m) => !m && document.documentElement.style.removeProperty('--sheet-h'))
+const onResize = () => !sheet.value && closeMenu()
 onMounted(() => {
   window.addEventListener('keydown', onKey)
   window.addEventListener('blur', closeMenu)
-  window.addEventListener('resize', closeMenu)
-  window.addEventListener('scroll', closeMenu, true)
+  window.addEventListener('resize', onResize)
+  window.addEventListener('scroll', onScroll, true)
+  phoneQuery.addEventListener('change', onPhoneChange)
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('blur', closeMenu)
-  window.removeEventListener('resize', closeMenu)
-  window.removeEventListener('scroll', closeMenu, true)
+  window.removeEventListener('resize', onResize)
+  window.removeEventListener('scroll', onScroll, true)
+  phoneQuery.removeEventListener('change', onPhoneChange)
 })
 </script>
 
 <template>
-  <div v-if="menu && target" class="backdrop" @pointerdown="closeMenu" @contextmenu.prevent="closeMenu">
-    <ul ref="menuEl" class="menu" :style="position" role="menu" @pointerdown.stop @contextmenu.prevent.stop>
+  <div v-if="menu && target" class="backdrop" :class="{ sheet }" @pointerdown="closeMenu" @contextmenu.prevent="closeMenu">
+    <ul ref="menuEl" class="menu" :class="{ sheet }" :style="sheet ? undefined : position" role="menu" @pointerdown.stop @contextmenu.prevent.stop>
+      <li v-if="sheet" class="title" role="presentation">{{ target.name }}</li>
       <li v-if="stopsRunning">
         <button type="button" role="menuitem" @click="toggleEnabled(target)">
           <Square :size="15" /> Disable / Stop{{ target.selectedLinkIds ? ` ${target.selectedLinkIds.length} selected` : '' }}
@@ -171,3 +190,14 @@ button.danger:hover:not(:disabled) { color: #d14343; }
 .box { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; border: 1px solid var(--border); border-radius: 4px; }
 kbd { margin-left: auto; color: var(--muted); font: inherit; font-size: 0.75rem; }
 </style>
+.title { padding: 6px 10px 10px; color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backdrop.sheet { background: rgba(0, 0, 0, 0.35); animation: fade 0.2s ease-out; }
+.menu.sheet {
+  left: 0; right: 0; bottom: 0; width: 100%; max-height: 50vh; max-height: 50dvh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 16px 16px 0 0;
+  animation: slide-up 0.22s ease-out;
+}
+.menu.sheet button { padding: 11px 12px; }
+@keyframes slide-up { from { transform: translateY(100%); } }
+@keyframes fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .menu.sheet, .backdrop.sheet { animation: none; } }

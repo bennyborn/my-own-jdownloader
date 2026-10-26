@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { coarsePointer, longPress } from './longPress'
 import { toneIcon } from './iconTone'
 import { withDevice } from './devices'
 import { ChevronRight, GripVertical, CircleCheck, CircleHelp, CircleX, Folder, Inbox, PowerOff, Loader, PackagePlus, Trash2, X } from 'lucide-vue-next'
@@ -254,6 +255,7 @@ const removeSelected = async () => {
       v-for="p in packages"
       :key="p.uuid"
       class="gpackage"
+      :data-item="`linkgrabber:package:${p.uuid}`"
       :class="[{ 'menu-open': menuOn('linkgrabber', 'package', p.uuid), disabled: isPackageDisabled(p), 'has-offline': hasOffline(p), dragging: packageDrag.dragId.value === p.uuid }, packageDrag.dropClass(p.uuid)]"
       :draggable="draggablePackage === p.uuid"
       @mouseup="draggablePackage = null"
@@ -264,6 +266,9 @@ const removeSelected = async () => {
       @pointerenter="setHovered(packageTarget(p))"
       @pointerleave="clearHovered(packageTarget(p))"
       @contextmenu="openMenu($event, packageTarget(p))"
+      @pointerdown="longPress($event, () => openMenu($event, packageTarget(p)))"
+      @touchend="draggablePackage = null"
+      @touchcancel="draggablePackage = null"
     >
       <div class="head">
         <GripVertical :size="16" class="grip" title="Drag to reorder" @mousedown.stop="draggablePackage = p.uuid" @touchstart.passive="draggablePackage = p.uuid" />
@@ -281,11 +286,13 @@ const removeSelected = async () => {
           v-for="l in p.links"
           :key="l.uuid"
           class="glink"
+          :data-item="`linkgrabber:link:${l.uuid}`"
           @pointerenter="setHovered(linkTarget(l))"
           @pointerleave="setHovered(packageTarget(p))"
           @contextmenu.stop="openMenu($event, linkTarget(l))"
           :class="[{ disabled: !l.enabled, checking: analysing && l.availability === 'UNKNOWN', picked: selected.has(l.uuid), 'menu-open': menuOn('linkgrabber', 'link', l.uuid), dragging: linkDrag.dragId.value === l.uuid }, linkDrag.dropClass(l.uuid)]"
-          draggable="true"
+          :draggable="!coarsePointer"
+          @pointerdown.stop="longPress($event, () => openMenu($event, linkTarget(l)))"
           @dragstart.stop="onLinkDragStart(p.uuid, l.uuid, $event)"
           @dragover.stop="onLinkDragOver(p.uuid, l.uuid, $event)"
           @drop.stop="linkDrag.onDrop($event)"
