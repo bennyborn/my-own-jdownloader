@@ -10,16 +10,6 @@ export const formatSpeed = (bytesPerSecond: number): string => `${formatBytes(by
 // Every unit after the first one has two digits (5h:05m), like a clock.
 const pad = (n: number): string => String(n).padStart(2, '0')
 
-export const formatEta = (seconds?: number): string => {
-  if (seconds === undefined || seconds <= 0) return '–'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h}h ${pad(m)}m`
-  if (m > 0) return `${m}m ${pad(s)}s`
-  return `${s}s`
-}
-
 // Time left as mm:ss (h:mm:ss from an hour on), e.g. for captcha timeouts.
 export const formatCountdown = (ms: number): string => {
   const total = Math.max(0, Math.floor(ms / 1000))

@@ -63,11 +63,17 @@ export const useCaptchas = () => {
   const dismiss = (id: number) => (dismissed.value = new Set(dismissed.value).add(id))
   const markHandled = (id: number) => (handled.value = new Set(handled.value).add(id))
 
+  // A hidden tab does not ask (every call goes on to the MyJDownloader API); coming back it looks at once.
+  const onVisible = () => !document.hidden && void reload()
   onMounted(() => {
     void reload()
-    timer = setInterval(reload, 3000)
+    timer = setInterval(() => !document.hidden && void reload(), 3000)
+    document.addEventListener('visibilitychange', onVisible)
   })
-  onUnmounted(() => clearInterval(timer))
+  onUnmounted(() => {
+    clearInterval(timer)
+    document.removeEventListener('visibilitychange', onVisible)
+  })
 
   return { jobs, imageJobs, widgetJobs, alertJobs, dismiss, reload, markHandled }
 }
