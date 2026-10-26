@@ -34,10 +34,9 @@ class CnlService : Service() {
             return START_NOT_STICKY
         }
         Notifier.channels(this)
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 3, Intent(this, CnlService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE)
-        val entry = Notification.Builder(this, Notifier.CNL).setSmallIcon(R.drawable.ic_stat).setAllowSystemGeneratedContextualActions(false).setColor(ACCENT).setContentTitle("Click'n'Load is on")
-            .setContentText("Websites can send links to this phone").setContentIntent(open).setOngoing(true)
+        val entry = Notifier.builder(this, Notifier.CNL, logo = false).setContentTitle("Click'n'Load is on")
+            .setContentText("Websites can send links to this phone").setContentIntent(Notifier.openApp(this)).setOngoing(true)
             .addAction(Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_stat), "Turn off", stop).build()).build()
         startForeground(3, entry, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         if (server == null) thread { serve() }
@@ -144,7 +143,6 @@ class CnlService : Service() {
 
     // Same payload as the extension sends to the backend; the device follows the setting (default, fixed, ask).
     private fun forward(req: Request, p: Map<String, String>): Boolean {
-        val base = Config.url(this) ?: return false
         val referrer = req.headers["referer"] ?: req.headers["origin"]
         val payload = JSONObject()
         fun put(key: String, value: String?) { if (!value.isNullOrEmpty()) payload.put(key, value) }

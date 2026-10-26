@@ -1,14 +1,22 @@
 package de.bennyborn.myjd
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
+import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 // Small helpers for the native screens (built in code, no layout files).
@@ -67,4 +75,41 @@ fun Activity.drawBehindBars(content: View) {
         v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
         insets
     }
+}
+
+// The WebViews of the app: scripts on, no pinch-to-zoom, no stretching of the whole page at the end of a list (Android 12's overscroll
+// effect), no scroll bar (it would run over the fixed bars of the page). The user agent without the "wv" marker: sites treat it like Chrome.
+@SuppressLint("SetJavaScriptEnabled")
+fun WebView.configureForApp() {
+    settings.javaScriptEnabled = true
+    settings.domStorageEnabled = true
+    settings.setSupportZoom(false)
+    settings.builtInZoomControls = false
+    settings.displayZoomControls = false
+    settings.userAgentString = settings.userAgentString.replace("; wv", "")
+    overScrollMode = View.OVER_SCROLL_NEVER
+    isVerticalScrollBarEnabled = false
+    isHorizontalScrollBarEnabled = false
+}
+
+// Logo, name and a line of text: the head of the setup and the lock screen. Returns the logo (it floats on the setup screen).
+fun LinearLayout.addBrand(subtitle: String): ImageView {
+    val logo = ImageView(context).apply { setImageResource(R.drawable.logo) }
+    addView(logo, LinearLayout.LayoutParams(context.dp(96), context.dp(96)))
+    addView(context.label("My Own JD", 26f).apply { typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, context.dp(12), 0, 0) })
+    addView(context.label(subtitle, 14f, MUTED).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, context.dp(2), 0, context.dp(28)) })
+    return logo
+}
+
+// A screen with the drifting background; `content` sits in the middle, no wider than a card (a tablet), scrolls if it has to and
+// keeps clear of the system bars and the keyboard.
+fun Activity.ambientScreen(content: View) {
+    val width = minOf(resources.displayMetrics.widthPixels - dp(48), dp(420))
+    val holder = FrameLayout(this).apply { addView(content, FrameLayout.LayoutParams(width, -2, Gravity.CENTER)) }
+    val scroll = ScrollView(this).apply { isFillViewport = true; addView(holder, FrameLayout.LayoutParams(-1, -1)) }
+    setContentView(FrameLayout(this).apply {
+        addView(AmbientView(this@ambientScreen), FrameLayout.LayoutParams(-1, -1))
+        addView(scroll, FrameLayout.LayoutParams(-1, -1))
+    })
+    drawBehindBars(scroll)
 }

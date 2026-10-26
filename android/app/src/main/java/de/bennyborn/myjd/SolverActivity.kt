@@ -1,7 +1,5 @@
 package de.bennyborn.myjd
 
-import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -35,7 +33,6 @@ class SolverActivity : GuardedActivity() {
 
     private fun path(suffix: String = "") = "/api/captcha/$id$suffix?device=${java.net.URLEncoder.encode(device, "UTF-8")}"
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         base = Config.url(this) ?: return finish()
@@ -46,11 +43,7 @@ class SolverActivity : GuardedActivity() {
         host = label("Captcha", 18f)
         status = label("Loading ...", 14f, MUTED)
         web = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.setSupportZoom(false)
-            overScrollMode = android.view.View.OVER_SCROLL_NEVER
-            settings.userAgentString = settings.userAgentString.replace("; wv", "")
+            configureForApp()
             addJavascriptInterface(Bridge(), "Solver")
         }
         val close = primaryButton("Close").apply { setOnClickListener { finish() } }

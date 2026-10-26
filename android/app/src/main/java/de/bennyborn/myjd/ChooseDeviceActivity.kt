@@ -1,10 +1,7 @@
 package de.bennyborn.myjd
 
 import android.os.Bundle
-import android.view.Gravity
-import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import kotlin.concurrent.thread
 
 // Click'n'Load with "ask every time": the links wait here until a device is picked (opened from the notification).
@@ -19,13 +16,7 @@ class ChooseDeviceActivity : GuardedActivity() {
             setPadding(dp(20), dp(20), dp(20), dp(20))
             background = rounded(0xE6161B22.toInt(), BORDER, 16)
         }
-        val holder = FrameLayout(this).apply { addView(column, FrameLayout.LayoutParams(minOf(resources.displayMetrics.widthPixels - dp(48), dp(420)), -2, Gravity.CENTER)) }
-        val scroll = ScrollView(this).apply { isFillViewport = true; addView(holder, FrameLayout.LayoutParams(-1, -1)) }
-        setContentView(FrameLayout(this).apply {
-            addView(AmbientView(this@ChooseDeviceActivity), FrameLayout.LayoutParams(-1, -1))
-            addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        })
-        drawBehindBars(scroll)
+        ambientScreen(column)
         thread {
             val base = Config.url(this)
             devices = try { if (base != null) Api.devices(base, Config.password(this)).filter { it.online } else emptyList() } catch (e: Exception) { emptyList() }

@@ -10,8 +10,6 @@ import android.os.CancellationSignal
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
-import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 
 // App lock: the phone's fingerprint / face / PIN / pattern opens the app. It keeps casual eyes out (privacy), it does not
@@ -115,18 +113,12 @@ class LockActivity : GuardedActivity() {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(24), dp(24), dp(24), dp(24))
-            addView(ImageView(this@LockActivity).apply { setImageResource(R.drawable.logo) }, LinearLayout.LayoutParams(dp(96), dp(96)))
-            addView(label("My Own JD", 26f).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(12), 0, 0) })
-            addView(label("Locked", 14f, MUTED).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(2), 0, dp(28)) })
+            setPadding(0, dp(24), 0, dp(24))
+            addBrand("Locked")
             addView(unlock, LinearLayout.LayoutParams(dp(220), -2))
             addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
-        setContentView(FrameLayout(this).apply {
-            addView(AmbientView(this@LockActivity), FrameLayout.LayoutParams(-1, -1))
-            addView(column, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
-        })
-        drawBehindBars(column)
+        ambientScreen(column)
     }
 
     private fun unlockPrompt() {

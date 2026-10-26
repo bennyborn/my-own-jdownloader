@@ -2,17 +2,12 @@ package de.bennyborn.myjd
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.app.Activity
 import android.content.Intent
-import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.animation.DecelerateInterpolator
-import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import kotlin.concurrent.thread
 
 // First start (and "change connection" from the error page): address and password of the backend, checked before saving.
@@ -54,7 +49,6 @@ class SetupActivity : GuardedActivity() {
             }
         }
 
-        val logo = ImageView(this).apply { setImageResource(R.drawable.logo) }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = rounded(0xE6161B22.toInt(), BORDER, 16)
@@ -69,21 +63,13 @@ class SetupActivity : GuardedActivity() {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(40), dp(24), dp(24))
-            addView(logo, LinearLayout.LayoutParams(dp(96), dp(96)))
-            addView(label("My Own JD", 26f).apply { typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(12), 0, 0) })
-            addView(label("Connect to your JDownloader", 14f, MUTED).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(2), 0, dp(28)) })
+            setPadding(0, dp(40), 0, dp(24))
+            addBrand("Connect to your JDownloader")
             addView(card, LinearLayout.LayoutParams(-1, -2))
             addView(label("Address and password stay on this phone.", 12f, MUTED).apply { gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) })
         }
-        // The column is centred and no wider than a card on a tablet.
-        val holder = FrameLayout(this).apply { addView(column, FrameLayout.LayoutParams(minOf(resources.displayMetrics.widthPixels, dp(460)), -2, Gravity.CENTER)) }
-        val scroll = ScrollView(this).apply { isFillViewport = true; addView(holder, FrameLayout.LayoutParams(-1, -1)) }
-        setContentView(FrameLayout(this).apply {
-            addView(AmbientView(this@SetupActivity), FrameLayout.LayoutParams(-1, -1))
-            addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        })
-        drawBehindBars(scroll)
+        ambientScreen(column)
+        val logo = column.getChildAt(0)
 
         if (Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f) {
             // The card fades in; the logo floats very slightly.

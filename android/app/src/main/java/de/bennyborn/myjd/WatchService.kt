@@ -1,7 +1,5 @@
 package de.bennyborn.myjd
 
-import android.app.Notification
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -24,8 +22,7 @@ class WatchService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Notifier.channels(this)
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val entry = Notification.Builder(this, Notifier.WATCH).setSmallIcon(R.drawable.ic_stat).setAllowSystemGeneratedContextualActions(false).setColor(ACCENT).setContentTitle("Watching for captchas").setContentIntent(open).setOngoing(true).build()
+        val entry = Notifier.builder(this, Notifier.WATCH, logo = false).setContentTitle("Watching for captchas").setContentIntent(Notifier.openApp(this)).setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, entry, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, entry)
         if (!running) {
             running = true

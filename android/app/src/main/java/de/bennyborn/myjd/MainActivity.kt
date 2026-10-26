@@ -1,8 +1,6 @@
 package de.bennyborn.myjd
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -48,7 +46,6 @@ class MainActivity : GuardedActivity() {
     private var authAttempts = 0
     private var authWindowStart = 0L
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val configured = Config.url(this)
@@ -62,18 +59,7 @@ class MainActivity : GuardedActivity() {
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) WebView.setWebContentsDebuggingEnabled(true)
 
         web = WebView(this)
-        web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true
-        // No pinch-to-zoom in the app (the layout is made for the phone; a browser keeps its zoom).
-        web.settings.setSupportZoom(false)
-        // No stretching of the whole page (header, tab bar) at the end of a list: Android 12's overscroll effect.
-        web.overScrollMode = View.OVER_SCROLL_NEVER
-        // The WebView's own scroll bar runs over the whole area, also over the fixed tab bar: not shown in the app.
-        web.isVerticalScrollBarEnabled = false
-        web.isHorizontalScrollBarEnabled = false
-        web.settings.builtInZoomControls = false
-        web.settings.displayZoomControls = false
-        web.settings.userAgentString = web.settings.userAgentString.replace("; wv", "")
+        web.configureForApp()
         web.addJavascriptInterface(UiBridge(), "Android")
         web.webViewClient = Client()
         // <input type="file"> (containers, ...): the WebView does not open a picker by itself.
