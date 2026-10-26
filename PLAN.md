@@ -17,17 +17,20 @@ dem MyJDownloader-Dienst. Unser Projekt spricht dessen öffentliche API an.
   die API hat kein Push (das Backend pollt und reicht per SSE weiter).
 - **Browser-Extension** (`extension/`, Manifest V3, derzeit nur Chrome) für alles, was im Browser des Nutzers
   passieren muss: Captchas auf der Hoster-Seite lösen, Click'n'Load, Benachrichtigungen, Überblick im Popup.
-- Später optional: Weg B (Direktverbindung zum JDownloader, Port 3129, gleiches Protokoll)
-  und Weg C (eigener MyJD-Server; nur sinnvoll, wenn die Server-Adresse im JDownloader umstellbar ist).
+- **Nächster großer Meilenstein: Weg B, Direktverbindung zum JDownloader** (gleiches Protokoll, die Datenaufrufe gehen im LAN direkt
+  zum Gerät; siehe den Abschnitt „Nächster Meilenstein“). Weg C (eigener MyJD-Server) bleibt optional und nur sinnvoll, wenn die
+  Server-Adresse im JDownloader umstellbar ist.
 
 ## Architektur
 
 ```
 Browser (UI) <--REST/SSE--> Backend (Node/TS) <--verschlüsselt--> api.jdownloader.org <--> JDownloader
 Browser-Extension <--REST--> Backend            (JDownloader --Anti-Captcha-Protokoll--> Backend)
+Android-App (WebView der UI + Dienst) <--REST/SSE--> Backend
 ```
 
 - Backend kapselt Login, Verschlüsselung, Reconnect, Geräteliste, Polling.
+- **Das Backend fragt die MyJD-API nur, wenn ein Client etwas will** (Zwischenspeicher, Bremse, keine eigenen Timer; Abschnitt „MyJD-API schonen“).
 - Zugangsdaten nur per Umgebungsvariablen / `.env` (nie committen, nie loggen).
 - Das UI bekommt eine einfache REST/SSE-Schnittstelle, kennt die MyJD-Details nicht.
 - **Login-Schutz:** HTTP Basic mit `UI_PASSWORD` für UI und API. Ausgenommen sind nur das Logo, das Web-App-Manifest
@@ -46,11 +49,14 @@ Browser-Extension <--REST--> Backend            (JDownloader --Anti-Captcha-Prot
 | 2 | Backend-Schicht | REST, SSE, Polling der Downloadliste, Fehlerbehandlung | fertig |
 | 3 | Basis-UI (MVP) | Downloadliste mit Paketen, Geschwindigkeit, Fortschritt, Umsortieren | fertig |
 | 4 | Linkgrabber | Links einfügen, Pakete prüfen, in Downloads verschieben | fertig |
-| 5 | Extras | Einstellungen, mehrere Geräte, Mobilansicht | Einstellungen, Konten und mehrere Geräte fertig; Mobilansicht und Regel-Editoren offen |
+| 5 | Extras | Einstellungen, mehrere Geräte, Mobilansicht | Einstellungen, Konten, mehrere Geräte und Mobilansicht fertig; Regel-Editoren offen |
 | 6 | Docker/Deployment | Container, Login-Schutz, Doku | Container, Login-Schutz und Entwickler-Doku (`DEVELOPER.md`) fertig, Nutzer-Doku offen |
 | – | Plugins, MCP | siehe unten | umgesetzt |
 | – | Captcha | siehe unten | umgesetzt |
 | – | Click'n'Load, Extension | siehe unten | umgesetzt (Chrome) |
+| – | Android-App | siehe unten | umgesetzt, Teile noch nicht abgenommen |
+| – | MyJD-API schonen | siehe unten | umgesetzt |
+| 7 | **Direktverbindung** | siehe unten | **nächster Meilenstein** |
 
 ## Referenz für das Protokoll
 
@@ -137,6 +143,87 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
   Mit zwei Test-JDownloadern geprüft (`test-devices/run.sh`).
 - **Container:** Der Host-Port kommt aus `APP_PORT` (`.env`), im Container läuft die App immer auf 3000. `./plugins` wird eingebunden.
 
+## Android-App (umgesetzt, `android/`)
+
+Der Handy-Browser hat keine Extensions, deshalb gibt es eine eigene App (Kotlin, ohne Bibliotheken, ab Android 11). Sie ist eine
+dünne Hülle um die Web-UI und übernimmt, was nur nativ geht. Entscheidung: kein Tauri/Capacitor; ein Desktop-Pendant wäre
+höchstens wieder ein WebView auf dieselbe UI. Der Remote-Browser im Container bleibt als Notlösung (iOS).
+
+- **Hülle:** WebView der Backend-Adresse (Basic-Auth), fremde Links öffnen im Browser, Datei-Auswahl, kein Pinch-Zoom, kein
+  Überscroll-Effekt, kein Scrollbalken. Adresse und Passwort liegen nur in den privaten App-Daten (Einrichtungsscreen, danach
+  Settings-Gruppe „App“ ganz oben). Bei einem Ladefehler gibt es eine Fehlerseite mit „Try again“ / „Change connection“.
+- **Bridge** `window.Android` (Typen in `frontend/src/appBridge.ts`): gilt nur, solange die Seite von der Backend-Adresse kommt.
+  Der Solver lädt fremde Seiten und bekommt ein eigenes Objekt, das nur den Token zurückgibt.
+- **Solver:** Turnstile, hCaptcha und reCAPTCHA v2 in einem WebView, dessen Hauptanfrage die App selbst beantwortet
+  (`shouldInterceptRequest`): leere Seite mit dem Widget unter der Domain des Hosters, wie die Extension. Der Token geht an
+  `POST /api/captcha/:id/solve`. Danach weiter mit dem nächsten offenen Captcha, am Ende zurück oder zu den Downloads
+  (einstellbar). Getestet mit vikingfile.com (Turnstile): von der Meldung bis zum Download.
+- **Ein Vordergrunddienst** (`BackgroundService`) für das, was an ist, mit **einer** Dauermeldung, die sagt, was läuft:
+  - die Glocke: neue Captchas (alle 15 s) und fertige Downloads (alle 30 s), nur wenn die App nicht vorne ist,
+  - Click'n'Load.
+- **Click'n'Load** (`CnlServer`): antwortet lokal auf `127.0.0.1:9666` wie ein JDownloader und gibt die Links an
+  `/api/linkgrabber/cnl`. Dazu „Teilen“ aus anderen Apps (`ShareActivity`). Zielgerät: Standard, fest oder jedes Mal fragen.
+- **Sperre:** Fingerabdruck/Gesicht/PIN des Handys, nach 0/1/5/15 Minuten im Hintergrund erneut; optional `FLAG_SECURE`. Das ist
+  Privatsphäre, keine Sicherheit: Die Dienste brauchen das Backend-Passwort ohne den Nutzer, es liegt unverschlüsselt in den App-Daten.
+- Start der Dienste nach dem Booten, adaptives Icon mit Themed-Icon-Ebene, Einrichtungs- und Sperrbildschirm mit ruhig
+  treibendem Hintergrund.
+- **Web-UI auf dem Handy:** Settings als Liste mit Detailseite (Zurück-Taste und Pfeil führen zur Liste), einklappbare Gruppen mit
+  Zählbox, Schalter statt Häkchen, Werte in der Zeile des Namens; Platzhalter `LoadingState`; Dialoge mit Blur, Rauschen gegen
+  Banding und Einblend-Effekt; Auswahlfelder mit demselben Chevron wie die grafischen Dropdowns.
+- **Grenzen:** nur Android, nur per Sideload (der Debug-Schlüssel liegt im Docker-Volume `myjd-android-home`, Updates mit
+  `adb install -r`). Noch nicht auf dem Gerät abgenommen: Click'n'Load samt Chromes Abfrage zum lokalen Netzwerk, Teilen, „Ask
+  every time“, Start nach dem Booten. Die Akku-Optimierung mancher Hersteller kann den Dienst beenden.
+
+## MyJD-API schonen (umgesetzt)
+
+Die MyJD-API gehört nicht uns. Regel: **Das Backend fragt sie nur, wenn ein Client etwas will, und nie öfter als nötig.** Das
+gilt unabhängig davon, wie viele Clients fragen. Umgesetzt in `backend/src/myjd/client.ts`, `shared.ts` und `activity.ts`:
+
+- **Lesen aus dem Merker:** Lesende Aktionen werden kurz gemerkt (Download- und Linkgrabber-Listen 1 bis 1,5 s, Captchas 2 s,
+  Stop-Marke 3 s, Konten 10 s, Hoster 60 s, Konfiguration und Ordner 30 s). Gleichzeitige Anfragen teilen sich einen Aufruf. Jede
+  Aktion, die etwas verändern könnte, verwirft die Merker **dieses Geräts** (ein Zähler pro Gerät; er verhindert auch, dass ein
+  Lesevorgang, der während der Änderung lief, für den neuen Stand gemerkt wird). Unbekannte Aktionen gelten als verändernd.
+- **Bremse im Client:** höchstens 8 Aufrufe gleichzeitig, 30 ms Abstand, nach einer 429 Pause (2 s, verdoppelt bis 60 s; nur bei
+  429, denn ein offenes Gerät darf die anderen nicht bremsen), 20 s Timeout pro Aufruf, ein gemeinsamer Login, wenn die Sitzung abläuft.
+- **Keine Timer, die von allein fragen:** Die Geräteliste, der Online-Status und die Solver-Prüfung werden erst auf Anfrage
+  aufgefrischt, wenn die letzte Abfrage älter als ein paar Sekunden ist. Die Geschwindigkeit wird nur gemessen, solange jemand
+  zuschaut (SSE der Oberfläche, oder das Popup fragt den Graphen, 15 s Lease). Der Graph hat deshalb keine Vorgeschichte vor dem Öffnen.
+- **Messbar:** `/api/health` zeigt `myjdCalls` (Aufrufe seit dem Start) und wer zuletzt angefragt hat (`clients`). Gemessen: ohne
+  Client 0 Aufrufe in 60 s; eine Hintergrund-Abfrage der Extension kostet 3 Aufrufe (3 Geräte); 40 gleichzeitige Anfragen kosten
+  so viel wie eine. Vorher lagen im Leerlauf rund 90 000 Aufrufe am Tag an.
+- **Clients:** ein versteckter Tab fragt die Captcha-Liste nicht ab, der Dienst der App ruht, solange die App vorne ist.
+- Zu wissen: Änderungen, die nicht über unsere API laufen (zum Beispiel direkt in JD am Desktop), sieht die Oberfläche erst nach der
+  Gültigkeit des Merkers.
+
+## Nächster Meilenstein: Direktverbindung zum JDownloader
+
+Ziel: Die **Datenaufrufe** (Downloads, Linkgrabber, Captchas, Geschwindigkeit) gehen im LAN direkt zum JDownloader statt über das
+MyJD-Relay. Bei MyJD bleiben Login, Geräteliste und die Frage nach der Direkt-Adresse, das sind ein paar Aufrufe pro Stunde.
+
+**Geprüft** (26.10.2026, lesend, gegen „Jarvis“):
+- `MyJDownloaderSettings.DirectConnectMode = LAN`, `ManualLocalPort 3129`, `LastLocalPort 33549`. Die Direktverbindung ist an.
+- `/device/getDirectConnectionInfos` liefert `172.31.0.2:33549` und `127.0.0.1:33549` (Modus LAN).
+- Ein direkter Aufruf `http://172.31.0.2:33549/t_<sessiontoken>_<deviceid>/downloadcontroller/getSpeedInBps`, verschlüsselt wie bisher mit
+  der MyJD-Sitzung, wurde beantwortet (HTTP 200). **Antwortzeit 2 bis 4 ms, über das Relay 33 bis 40 ms.**
+- Das Gerät **prüft die Sitzung**: Mit einem erfundenen Token riss die Verbindung ab. Es bleibt authentifiziert, die Nutzdaten sind AES-verschlüsselt.
+- **Hürde ist das Netz:** JD läuft im Docker-Netz `jdownloader_default` (172.31.0.0/16), unser Backend in
+  `my-own-jdownloader_default`. Aus unserem Container ist 172.31.0.2 nicht erreichbar, vom Host aus schon.
+
+**Plan:**
+1. **Netz:** `compose.yaml` bekommt `jdownloader_default` (Jarvis) und `jd-test_default` (Test-Geräte) als externe Netze. Das ändert
+   nur unseren Container, nicht JD. (Der andere Weg, JDs Port zu veröffentlichen und `CustomDeviceIPs` zu setzen, ändert das laufende JD.)
+2. **Client** (`myjd/client.ts`): pro Gerät automatisch eine Route wählen. `getDirectConnectionInfos` einige Minuten merken, die erreichbare
+   Adresse mit kurzem Timeout nehmen, den Aufruf direkt senden; ist sie nicht erreichbar, geht **dieser Aufruf** über das Relay, und die Route wird
+   etwa eine Minute gemieden. Verschlüsselung, Pfad und Sitzungsfehler bleiben wie heute.
+3. **Notschalter:** `MYJD_DIRECT=off` in der `.env` (Standard: automatisch).
+4. Zwischenspeicher und Bremse bleiben: Bei Direktverbindung trifft die Last JD selbst, und das ist ein schwächerer Server als MyJD.
+5. **Prüfen:** Latenz, JD-Neustart (der Port wechselt vermutlich, die Adresse wird frisch abgefragt), Gerät offline, Sitzungsablauf;
+   `/api/health` zeigt, wie viele Aufrufe direkt und wie viele über das Relay gingen.
+
+**Bewusst nicht:** die alte Remote-API von JD (`RemoteAPIConfig.DeprecatedApi*`, Port 3128). Sie läuft ganz ohne MyJD, ist aber
+unauthentifiziert, standardmäßig nur auf localhost und trägt „deprecated“ im Namen. Nur für einen Betrieb ganz ohne MyJD-Konto,
+und dann nur in einem abgeschotteten Netz.
+
 ## Status
 
 - **Phasen 1–4 sind umgesetzt.** Dazu:
@@ -149,7 +236,8 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
   - Captcha (alle drei Arten), Click'n'Load, Extension mit Popup (Gerätekarte, Graph, Captchas), Benachrichtigungen.
   - Container, UI-Login (`UI_PASSWORD`).
   - Einstellungen, Konten, mehrere Geräte, Plugins, MCP (siehe oben).
-- **Offen:** Mobilansicht, die Lücken unter TODO und die Nutzer-Doku (Phase 6).
+  - Mobilansicht und Android-App (siehe oben), MyJD-API schonen (siehe oben).
+- **Offen:** der Meilenstein Direktverbindung, die Lücken unter TODO und die Nutzer-Doku (Phase 6).
 
 ## TODO
 
@@ -180,16 +268,22 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 - Backend start: if api.jdownloader.org is unreachable the process exits and Docker restarts it in a loop (seen once). Retry with
   a delay instead, ideally with the server already listening and a "MyJDownloader not reachable" page.
 - Web UI notifications only work over https or on localhost (not on `http://server:port`); document it, or put the UI behind a
-  reverse proxy with a certificate. The extension's notifications work everywhere.
+  reverse proxy with a certificate. The extension's and the Android app's notifications work everywhere. Without https a browser
+  also cannot install the UI as an app (no PWA install); the Android app replaces that.
 - Browser extension: Firefox manifest (`background.scripts` instead of `service_worker`); revise the design of the captcha page.
 - Captcha overlay: check whether our browser extension is active in the current browser. If not, the "Solve" button for
   token captchas (Turnstile, hCaptcha, reCAPTCHA) makes no sense; hide it and show an error ("browser extension not
   installed / not active") instead. Idea: the extension's content script announces itself on the web UI page (e.g. a
-  `postMessage` or a marker attribute on `<html>`), the overlay checks for it.
+  `postMessage` or a marker attribute on `<html>`), the overlay checks for it. The Android app announces itself with
+  `window.Android` (`frontend/src/appBridge.ts`), the same check could cover both.
 - Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
 - Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
-- Mobile layout (phase 5) is still open; only a few `@media` rules exist.
-  - Open the context menu by long touch (there is no right click on a phone).
+- Mobile follow-ups: expert settings behind a "Show advanced" switch (JD's "General" page has 75 entries; needs a rule for what counts
+  as expert, e.g. values in ms or bytes); the speed graph runs behind the ETA text in the status bar when the curve is high; closing a dialog
+  is not animated (opening is).
+- Android app, to confirm on the phone: Click'n'Load (incl. Chrome's local network prompt), share, "ask every time" chooser, app
+  lock, start after boot, file picker, manufacturer battery limits. Ideas: release signing instead of the debug key, an update check,
+  hCaptcha / reCAPTCHA test (the chain was only tried with Turnstile), the modern back handling instead of `onBackPressed`.
 - Show "open connections" metric in the status bar (API call still unknown).
 - Resolve more plugin-internal URLs (only YouTube has been checked).
 - Tested against the real JDownloader (checked = confirmed by the user):

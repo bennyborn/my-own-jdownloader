@@ -218,6 +218,72 @@ reports, run `/config/list` with the pattern `.*` (all) or an interface name, wi
 - Write tools (`set_setting`, `reset_setting`, `add_links`) only exist with `MCP_WRITE=true`. Values are checked against the setting's type and options; secrets and the groups this app manages itself are refused.
 - There is deliberately no tool to stop, pause or delete downloads.
 
+## Talking to the MyJDownloader API
+
+The MyJDownloader API is not ours. Everything goes through `MyJdClient` (`backend/src/myjd/client.ts`), and the rules in there are what
+keep a backend with any number of clients cheap for it. Read this before you add a call, a timer or a poll.
+
+- **Never call `fetch` for the API yourself.** `callDevice(deviceId, action, params)` is the way. It applies the limits (at most 8 calls at a
+  time, 30 ms between starts, a pause after a 429, a 20 s timeout) and one shared login when the session expires.
+- **A new read:** add its action to `READ_TTL_MS` (action -> how long its answer may be kept, in ms). Concurrent callers then share one
+  call. Pure reads that must not be kept (a counter, a single item) go into the `NEUTRAL` pattern.
+- **A new change** (anything that could alter what a read returns): nothing to do. Every action that is neither in `READ_TTL_MS` nor `NEUTRAL`
+  counts as a change; it drops the kept answers of that device (`epoch`). If you are unsure, leave it out of both lists: stale data is worse
+  than one extra call.
+- **No timers that call the API.** Nothing in the backend asks MyJDownloader unless a client wants it. Use one of these patterns instead:
+  subscribe (`DownloadsPoller`: polls while at least one SSE listener exists), lease (`activity.view()`: the speed is measured for 15 s after the
+  graph was asked for), or look up on request with an age (`BandwidthHistory.probe(maxAgeMs)`, `DeviceRegistry.freshen(maxAgeMs)`).
+- **`Shared`** (`backend/src/shared.ts`) is the small helper behind it: `get(key, ttlMs, load)` returns a kept answer or calls `load` once
+  for everybody who asks at the same time. Failures are not kept.
+- **See what it costs:** `GET /api/health` (it does not count as a client) shows `myjdCalls` and who asked last (`clients`). Read it twice
+  a minute apart to measure a change. Without any client the counter must not move.
+- Client side: a hidden tab does not poll, and the Android service rests while the app is in front. Keep new polls consistent with that.
+
+## Android app
+
+`android/` is a small Kotlin app (no libraries, minSdk 30) around the web UI. A phone browser has no extensions, so the app solves token
+captchas, notifies, answers Click'n'Load, takes shared links and can lock itself. Nothing is installed on the host: it is built in a container.
+
+```sh
+docker build -t myjd-android android/
+docker run --rm --user 1000:1000 -v "$PWD/android":/project -v myjd-android-home:/home/builder myjd-android gradle --no-daemon -q assembleDebug
+# -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+The volume `myjd-android-home` holds the Gradle cache **and the debug signing key**: without it every build is signed with a new key and
+cannot update the installed app (the data would be lost with an uninstall). `ANDROID_USER_HOME` in the `Dockerfile` points there. `adb` is
+in the same image (`/opt/android-sdk/platform-tools`): wireless debugging needs `adb pair` once, then `adb connect <ip>:<port>` (the port changes
+whenever wireless debugging restarts), and updates go with `adb install -r`. Changes to the web UI also need `docker compose up -d --build app`:
+the app only shows what the backend serves.
+
+| File (`android/app/src/main/java/de/bennyborn/myjd/`) | Job |
+| --- | --- |
+| `Config.kt`, `Api.kt` | Settings kept on the phone (address, password, switches); blocking calls to the backend with Basic auth |
+| `Ui.kt`, `Ambient.kt` | View helpers (screens are built in code): `configureForApp` (WebViews), `addBrand`, `ambientScreen`; the drifting background |
+| `SetupActivity.kt` | First start |
+| `MainActivity.kt` | WebView of the UI, file picker, error page, the bridge object `Android` (`UiBridge`) |
+| `SolverActivity.kt` | Token captchas: answers the hoster page's request itself with a page that renders the widget; continues with the next captcha |
+| `BackgroundService.kt`, `Notifier.kt` | The one foreground service (captchas, finished downloads, Click'n'Load) and the notifications |
+| `CnlServer.kt`, `ChooseDeviceActivity.kt`, `ShareActivity.kt` | Click'n'Load on `127.0.0.1:9666`, the "share" target, the device choice for both |
+| `Lock.kt` | App lock (`GuardedActivity` is the base class of every screen, `LockActivity`) |
+| `BootReceiver.kt` | Starts the service after a restart |
+
+**The bridge.** The page gets `window.Android`; its typed shape is `frontend/src/appBridge.ts`, the implementation `UiBridge` in `MainActivity.kt`.
+Every method first checks that the page comes from the backend's own address (`trusted()`); other sites never load in this WebView (they open
+in the browser). The solver WebView loads hoster pages and gets only its own `Solver` object. State that changes on the phone (permission,
+switches, lock) is announced with the window event `android-state`; the page reads it again, it keeps no copy. The settings group "App"
+(`frontend/src/settings.ts`, scope `app`) only exists inside the app and is stored on the phone through the bridge, never in the backend.
+
+Things to know:
+- The solver trick needs the page to keep the hoster's origin: tokens are bound to it (see "Captcha" in PLAN.md).
+- Click'n'Load answers like a local JDownloader (`/jdcheck.js`, `/flash`, `/flash/add`, `/flash/addcrypted2`, CORS and
+  `Access-Control-Allow-Private-Network`) and forwards the payload the extension sends.
+- The lock is privacy only: the service reads the backend password without the user, so it cannot be encrypted behind the lock.
+- A system dialog of the lock shows black in screenshots; `FLAG_SECURE` does too.
+- The manifest allows clear-text http: the backend usually has no certificate.
+- Settings pages for the phone: list and page per section (`SettingsView.vue`, the anchor is `#settings` and `#settings/<section>`), the shared
+  styles of the app pages are in `appSettings.css`, the switch is `input.switch` / `label.check` in `global.css`.
+
 ## Development
 
 Node and npm only run in containers: `docker compose run --rm dev npm install`, then for example
