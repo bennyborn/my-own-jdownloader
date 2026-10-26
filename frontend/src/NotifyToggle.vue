@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Bell, BellOff } from 'lucide-vue-next'
 import { computed } from 'vue'
+import { inApp } from './appBridge'
 import { showInfo } from './confirm'
 import { notifyState, notifyTest, toggleNotifications } from './useNotifications'
 
@@ -9,7 +10,7 @@ const hint = computed(
     ({
       unsupported: 'This browser has no notifications',
       insecure: 'Not available on this page (click for details)',
-      blocked: 'Notifications are blocked for this site (click for details)',
+      blocked: inApp ? 'Notifications are blocked for this app (click to open the Android settings)' : 'Notifications are blocked for this site (click for details)',
       ask: 'Click to allow notifications for new captchas',
       on: 'Notifications for new captchas are on (click to switch off)',
       off: 'Notifications for new captchas are off (click to switch on)'
@@ -19,6 +20,7 @@ const usable = computed(() => notifyState.value === 'ask' || notifyState.value =
 
 // Why the bell cannot be switched on here (shown in a dialog; a tooltip is too small for this).
 const explanation = (): { title: string; message: string } | null => {
+  if (inApp) return null // the app opens the Android settings itself
   if (notifyState.value === 'insecure') {
     return {
       title: 'Notifications are not available here',
@@ -52,7 +54,7 @@ const click = async () => {
 
 <template>
   <button v-if="notifyState !== 'unsupported'" type="button" class="bell" :class="{ on: notifyState === 'on', unavailable: !usable }" :title="hint" :aria-label="hint" @click="click">
-    <Bell v-if="notifyState === 'on' || notifyState === 'ask'" :size="15" />
+    <Bell v-if="notifyState === 'on'" :size="15" />
     <BellOff v-else :size="15" />
   </button>
 </template>

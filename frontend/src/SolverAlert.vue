@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Clock, ShieldCheck } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { inApp, solveInApp } from './appBridge'
 import { formatCountdown } from './format'
 import type { CaptchaJob } from './useCaptchas'
 
@@ -11,6 +12,14 @@ const now = ref(Date.now())
 let tick: ReturnType<typeof setInterval> | undefined
 onMounted(() => (tick = setInterval(() => (now.value = Date.now()), 1000)))
 onUnmounted(() => clearInterval(tick))
+// In the app the solver is a native screen, in a browser the extension reacts to the link.
+const open = (e: Event) => {
+  if (inApp && props.job) {
+    e.preventDefault()
+    solveInApp(props.job)
+  }
+  if (props.job) emit('dismiss', props.job.id)
+}
 const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value - props.job.fetchedAt) : 0))
 </script>
 
@@ -21,10 +30,10 @@ const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value
         <ShieldCheck :size="20" /> Captcha waiting
         <span class="left" :class="{ low: remainingMs < 60000 }" title="Time left to answer"><Clock :size="15" />{{ formatCountdown(remainingMs) }}</span>
       </h3>
-      <p><strong>{{ job.hoster }}</strong> needs a captcha that is solved on the hoster's page with the browser extension. You can open it later with the red button in the status bar.</p>
+      <p><strong>{{ job.hoster }}</strong> needs a captcha that is solved on the hoster's page with {{ inApp ? 'this app' : 'the browser extension' }}. You can open it later with the red button in the status bar.</p>
       <div class="actions">
         <button type="button" @click="emit('dismiss', job.id)">Later</button>
-        <a class="primary" :href="job.openUrl" target="_blank" rel="noopener" @click="emit('dismiss', job.id)">Open solver page</a>
+        <a class="primary" :href="job.openUrl" target="_blank" rel="noopener" @click="open">Open solver page</a>
       </div>
     </div>
   </div>
