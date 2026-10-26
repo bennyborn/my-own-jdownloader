@@ -40,7 +40,7 @@ const toggle = (e: Event) => {
 </script>
 
 <template>
-  <div class="privacy">
+  <div class="form">
     <label class="check">
       <input type="checkbox" :checked="state.enabled" @change="toggle" />
       <span>Lock the app<small>Unlock with your fingerprint, face or the PIN of the phone when the app starts</small></span>
@@ -62,14 +62,4 @@ const toggle = (e: Event) => {
   </div>
 </template>
 
-<style scoped>
-.privacy { display: grid; gap: 16px; max-width: 480px; }
-.check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-.check input { margin-top: 3px; accent-color: var(--accent); }
-.check span { display: grid; gap: 2px; font-weight: 600; }
-small { color: var(--muted); font-weight: 400; }
-.field { display: grid; gap: 6px; font-weight: 600; }
-.field.off { opacity: 0.5; }
-select { padding: 8px 10px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-weight: 400; }
-.hint { margin: 0; color: var(--muted); font-size: 0.85rem; }
-</style>
+<style scoped src="./appSettings.css"></style>

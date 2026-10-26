@@ -148,7 +148,7 @@ const reset = async (g: ConfigGroup, e: ConfigEntry) => {
           <label :for="idOf(s.group, e)">{{ e.label }}</label>
           <button v-if="changed(e)" type="button" class="reset" :disabled="busy.has(idOf(s.group, e))" title="Reset to the default" aria-label="Reset to the default" @click="reset(s.group, e)"><RotateCcw :size="14" /></button>
         </div>
-        <input v-if="e.type === 'BOOLEAN'" :id="idOf(s.group, e)" type="checkbox" :checked="e.value === true" :disabled="busy.has(idOf(s.group, e))" @change="commit(s.group, e, ($event.target as HTMLInputElement).checked)" />
+        <input v-if="e.type === 'BOOLEAN'" :id="idOf(s.group, e)" class="switch" type="checkbox" :checked="e.value === true" :disabled="busy.has(idOf(s.group, e))" @change="commit(s.group, e, ($event.target as HTMLInputElement).checked)" />
         <select v-else-if="e.type === 'ENUM'" :id="idOf(s.group, e)" :value="e.value" :disabled="busy.has(idOf(s.group, e))" @change="commit(s.group, e, ($event.target as HTMLSelectElement).value)">
           <option v-for="o in e.options" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
@@ -211,13 +211,9 @@ input[type='checkbox'] { justify-self: start; }
   .field.inline > .line { grid-area: 1 / 1; }
   .field.inline > input, .field.inline > select { grid-area: 1 / 2; }
   .field.inline > small { grid-area: 2 / 1 / 3 / 3; }
-  /* The checkbox is a switch on the right, label and hint on the left. */
+  /* The checkbox is a switch (App.vue) on the right, label and hint on the left. */
   .field.bool { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
-  .field.bool > input { grid-area: 1 / 2; appearance: none; -webkit-appearance: none; position: relative; width: 46px; height: 28px; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.15s; }
-  .field.bool > input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
-  .field.bool > input:checked { background: var(--accent); }
-  .field.bool > input:checked::after { transform: translateX(18px); }
-  .field.bool > input:disabled { opacity: 0.5; }
+  .field.bool > input { grid-area: 1 / 2; }
   .field.bool > .line { grid-area: 1 / 1; }
   .field.bool > small { grid-column: 1; }
 }

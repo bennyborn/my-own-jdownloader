@@ -31,13 +31,13 @@ const save = () => {
 </script>
 
 <template>
-  <form class="app" @submit.prevent="save">
-    <label>
+  <form class="form" @submit.prevent="save">
+    <label class="field">
       Backend address
       <small>Where this interface is served, e.g. http://192.168.1.10:3000</small>
       <input v-model="url" type="url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="http://192.168.1.10:3000" />
     </label>
-    <label>
+    <label class="field">
       Password
       <small>The UI password, empty if the backend has none</small>
       <span class="pw">
@@ -52,16 +52,11 @@ const save = () => {
   </form>
 </template>
 
+<style scoped src="./appSettings.css"></style>
 <style scoped>
-.app { display: grid; gap: 14px; max-width: 480px; }
-label { display: grid; gap: 4px; font-weight: 600; }
-small { color: var(--muted); font-weight: 400; }
-input { width: 100%; box-sizing: border-box; padding: 8px 10px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-weight: 400; }
-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .pw { position: relative; display: block; }
-.pw input { padding-right: 38px; }
+.form .pw input { padding-right: 38px; } /* room for the eye (the shared rule for inputs is as specific as .pw input) */
 .eye { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: inline-flex; padding: 8px; background: none; border: 0; color: var(--muted); cursor: pointer; }
-.hint { margin: 0; color: var(--muted); font-size: 0.85rem; }
 .save { padding: 8px 18px; background: var(--accent); color: #fff; border: 0; border-radius: 6px; font: inherit; cursor: pointer; }
 .save:disabled { opacity: 0.5; cursor: default; }
 </style>

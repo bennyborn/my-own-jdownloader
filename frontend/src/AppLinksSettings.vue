@@ -9,7 +9,7 @@ const change = () => androidBridge?.setCnlDevice(choice.value)
 </script>
 
 <template>
-  <div class="links">
+  <div class="form">
     <label class="field">
       Send them to
       <select v-model="choice" @change="change">
@@ -25,9 +25,4 @@ const change = () => androidBridge?.setCnlDevice(choice.value)
   </div>
 </template>
 
-<style scoped>
-.links { display: grid; gap: 14px; max-width: 480px; }
-.field { display: grid; gap: 6px; font-weight: 600; }
-select { padding: 8px 10px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-weight: 400; }
-.hint { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
-</style>
+<style scoped src="./appSettings.css"></style>

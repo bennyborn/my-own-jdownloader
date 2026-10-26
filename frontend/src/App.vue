@@ -409,12 +409,13 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid
 /* Phones: the tabs become a bottom bar within thumb reach; the status bar floats above it. */
 :root { --tabbar-h: 0px; }
 @media (max-width: 640px) {
-  /* Phone: a checkbox with a text becomes a row with a switch on the right (also in JdSettings, which has its own rows). */
+  /* Phone: a checkbox with a text becomes a row with a switch on the right; input.switch is such a checkbox without the row. */
   label.check { flex-direction: row-reverse; justify-content: space-between; align-items: center !important; gap: 16px; }
-  label.check input[type='checkbox'] { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 46px; height: 28px; margin: 0 !important; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.15s; }
-  label.check input[type='checkbox']::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
-  label.check input[type='checkbox']:checked { background: var(--accent); }
-  label.check input[type='checkbox']:checked::after { transform: translateX(18px); }
+  label.check input[type='checkbox'], input[type='checkbox'].switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 46px; height: 28px; margin: 0 !important; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.15s; }
+  label.check input[type='checkbox']::after, input[type='checkbox'].switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+  label.check input[type='checkbox']:checked, input[type='checkbox'].switch:checked { background: var(--accent); }
+  label.check input[type='checkbox']:checked::after, input[type='checkbox'].switch:checked::after { transform: translateX(18px); }
+  input[type='checkbox'].switch:disabled { opacity: 0.5; }
   :root { --tabbar-h: calc(60px + env(safe-area-inset-bottom)); }
   nav {
     position: fixed; inset: auto 0 0 0; z-index: 2; margin: 0; gap: 0; box-sizing: border-box;

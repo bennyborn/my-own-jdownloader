@@ -8,7 +8,7 @@ const change = () => androidBridge?.setNotifyDownloads(downloads.value)
 </script>
 
 <template>
-  <div class="notify">
+  <div class="form">
     <label class="check">
       <input v-model="downloads" type="checkbox" @change="change" />
       <span>Finished downloads<small>A notification when a package is done, while the app is not in front. Checked every 30 seconds.</small></span>
@@ -17,11 +17,4 @@ const change = () => androidBridge?.setNotifyDownloads(downloads.value)
   </div>
 </template>
 
-<style scoped>
-.notify { display: grid; gap: 16px; max-width: 480px; }
-.check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-.check input { margin-top: 3px; accent-color: var(--accent); }
-.check span { display: grid; gap: 2px; font-weight: 600; }
-small { color: var(--muted); font-weight: 400; }
-.hint { margin: 0; color: var(--muted); font-size: 0.85rem; }
-</style>
+<style scoped src="./appSettings.css"></style>
