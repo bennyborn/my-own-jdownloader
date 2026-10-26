@@ -139,11 +139,11 @@ watch(changeTick, async () => {
 })
 
 // Once everything has been moved to the downloads, the empty linkgrabber is no use: show the downloads.
-// "Everything" means the linkgrabbers of all devices, not only the one that is shown.
+// Only the linkgrabbers that are shown count: the selected device, or all of them in the "all devices" view.
 const anyGrabberHasLinks = async (): Promise<boolean> => {
   const results = await Promise.all(
     devices.value
-      .filter((d) => d.online !== false)
+      .filter((d) => d.online !== false && (showingAll.value || d.id === currentDevice.value))
       .map(async (d) => {
         try {
           const res = await fetch(withDevice('/api/linkgrabber', d.id))
@@ -157,9 +157,16 @@ const anyGrabberHasLinks = async (): Promise<boolean> => {
   )
   return results.some(Boolean)
 }
+// JD moves the links asynchronously, so right after the call the linkgrabber may still list them: check a few times.
 watch(movedTick, async () => {
-  await grabber.reload()
-  if (tab.value === 'grabber' && !(await anyGrabberHasLinks()) && tab.value === 'grabber') tab.value = 'downloads'
+  for (let attempt = 0; attempt < 6 && tab.value === 'grabber'; attempt++) {
+    if (attempt) await new Promise((resolve) => setTimeout(resolve, 1000))
+    await grabber.reload()
+    if (tab.value === 'grabber' && !(await anyGrabberHasLinks())) {
+      tab.value = 'downloads'
+      return
+    }
+  }
 })
 
 const onAdded = async (device?: string) => {
