@@ -40,7 +40,7 @@ const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; z-index: 340; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); }
+.overlay { position: fixed; inset: 0; z-index: 340; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); }
 .dialog { display: grid; gap: 14px; width: min(440px, 100%); padding: 20px 24px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); }
 h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
 h3 svg { color: #d14343; }

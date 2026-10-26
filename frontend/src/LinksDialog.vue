@@ -75,7 +75,7 @@ const copy = async () => {
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); }
+.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); }
 .dialog { display: grid; gap: 14px; width: min(760px, 100%); max-height: 100%; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-sizing: border-box; }
 header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 h3 { margin: 0; font-size: 1rem; }

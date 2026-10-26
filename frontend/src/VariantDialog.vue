@@ -113,7 +113,7 @@ const useForLink = async (id: string) => {
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); }
+.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); }
 .dialog { display: grid; gap: 12px; width: min(620px, 100%); max-height: calc(100vh - 32px); padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
 header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 h3 { margin: 0; font-size: 1rem; }

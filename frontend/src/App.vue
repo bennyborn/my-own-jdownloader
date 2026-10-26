@@ -334,6 +334,8 @@ const dragFor = (device: string) => {
   --extract-text: #8a6500; /* readable on a light background */
   --fill-soft: var(--border);
   --hover: rgba(127, 127, 127, 0.1);
+  --overlay-blur: 5px; /* what lies behind a dialog is darkened and blurred */
+  --overlay-grain: 0.06; /* strength of the fine grain over it (0 = none), hides colour banding; 0.03 to 0.08 is sensible */
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
@@ -481,5 +483,39 @@ h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 @keyframes extract-stripes { to { background-position: 28px 0; } }
 .meta { gap: 4px 16px; color: var(--muted); font-size: 0.85rem; }
 .status { margin-top: 4px; }
-.dropzone { position: fixed; inset: 12px; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0, 0, 0, 0.6); border: 2px dashed var(--accent); border-radius: 16px; color: #fff; font-size: 1.05rem; pointer-events: none; }
+.dropzone { position: fixed; inset: 12px; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); border: 2px dashed var(--accent); border-radius: 16px; color: #fff; font-size: 1.05rem; pointer-events: none; }
+/* Selects: the same chevron as the graphical dropdowns (lucide ChevronDown, 14px), in the muted colour of the theme. A picture
+   cannot read CSS variables, so there is one per theme. !important because the components set their own background and padding. */
+:root { --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2359636e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+}
+:root[data-theme='dark'] { --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px !important;
+  background-image: var(--select-arrow) !important;
+  background-repeat: no-repeat !important;
+  background-size: 14px 14px !important;
+  background-position: right 12px center !important;
+}
+select:not([multiple]):disabled { opacity: 0.6; }
+/* Dialogs appear softly: the dimmed, blurred backdrop fades in, the dialog rises a little and grows from 97%. */
+@keyframes overlay-in { from { opacity: 0; } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
+.overlay { animation: overlay-in 0.18s ease-out; }
+.overlay > * { animation: dialog-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* A faint grain over the blurred backdrop hides the colour banding that a blur of very dark gradients shows (8 bits are not enough
+   for the few levels between black and the page's background). z-index -1: above the overlay's background, below the dialog. */
+.overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--overlay-grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@media (prefers-reduced-motion: reduce) { .overlay, .overlay > * { animation: none; } }
 </style>

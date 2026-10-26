@@ -201,7 +201,7 @@ button.danger:hover:not(:disabled) { color: #d14343; }
 .sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .box { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; border: 1px solid var(--border); border-radius: 4px; }
 .title { padding: 6px 10px 10px; color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.backdrop.sheet { background: rgba(0, 0, 0, 0.35); animation: fade 0.2s ease-out; }
+.backdrop.sheet { background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); animation: fade 0.2s ease-out; }
 .menu.sheet {
   left: 0; right: 0; bottom: 0; width: 100%; max-height: 50vh; max-height: 50dvh; overflow-y: auto; overscroll-behavior: contain;
   padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 16px 16px 0 0;

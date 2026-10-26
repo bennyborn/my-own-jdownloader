@@ -24,8 +24,8 @@ onUnmounted(() => (document.body.style.overflow = ''))
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.dialog { display: flex; flex-direction: column; width: min(720px, 100%); max-height: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dialog { display: flex; flex-direction: column; width: min(720px, 100%); max-height: 70vh; max-height: 70dvh; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
 h2 { margin: 0; font-size: 1.05rem; }
 .close { display: inline-flex; background: none; color: var(--muted); border: 0; border-radius: 6px; padding: 4px; cursor: pointer; }

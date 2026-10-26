@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus } from 'lucide-vue-next'
+import { FileUp, FolderPen, List, Plus, X } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import DevicePicker from './DevicePicker.vue'
 import { currentDevice, devices, multiple, withDevice } from './devices'
@@ -8,6 +8,12 @@ const emit = defineEmits<{ added: [device: string]; cancel: [] }>()
 
 const links = ref('')
 const file = ref<File | null>(null)
+// The browser's own file input looks out of place: it stays hidden, our button opens it.
+const picker = ref<HTMLInputElement>()
+const clearFile = () => {
+  file.value = null
+  if (picker.value) picker.value.value = ''
+}
 const folders = ref<string[]>([])
 const folder = ref('')
 const customFolder = ref('')
@@ -159,9 +165,13 @@ const submit = async () => {
 <template>
   <form class="add" @submit.prevent="submit">
     <textarea v-model="links" rows="4" placeholder="Paste links, URLs or other text here" />
-    <label class="file">
-      <input type="file" accept=".dlc,.ccf,.rsdf,.jdc,.metalink,.meta4" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null" />
-    </label>
+    <div class="file">
+      <input ref="picker" type="file" accept=".dlc,.ccf,.rsdf,.jdc,.metalink,.meta4" hidden @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null" />
+      <button type="button" class="pick" :class="{ chosen: file }" @click="picker?.click()">
+        <FileUp :size="16" /><span class="name">{{ file ? file.name : 'Add a container file' }}</span><span v-if="!file" class="kinds">.dlc, .ccf, .metalink …</span>
+      </button>
+      <button v-if="file" type="button" class="iconbtn" title="Remove the file" aria-label="Remove the file" @click="clearFile"><X :size="16" /></button>
+    </div>
 
     <template v-if="multiple">
       <h3>Device</h3>
@@ -174,8 +184,8 @@ const submit = async () => {
         <option v-for="f in folders" :key="f" :value="f">{{ f }}</option>
       </select>
       <input v-else v-model="customFolder" type="text" placeholder="/path/on/the/server" />
-      <button type="button" class="link" @click="useCustomFolder = !useCustomFolder">
-        {{ useCustomFolder ? 'Choose from list' : 'Choose other folder' }}
+      <button type="button" class="iconbtn" :title="useCustomFolder ? 'Choose from the list' : 'Enter another folder'" :aria-label="useCustomFolder ? 'Choose from the list' : 'Enter another folder'" @click="useCustomFolder = !useCustomFolder">
+        <List v-if="useCustomFolder" :size="16" /><FolderPen v-else :size="16" />
       </button>
     </div>
     <label class="check"><input v-model="subfolder" type="checkbox" /> Subfolder per package name</label>
@@ -214,13 +224,21 @@ textarea, input[type='text'], select, button {
 }
 textarea, input[type='text'], select { width: 100%; }
 textarea { resize: vertical; }
-.file input { max-width: 100%; }
+/* Our own file button, in the look of the fields. */
+.file { display: flex; gap: 8px; }
+.pick { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 9px 12px; border-style: dashed; color: var(--muted); text-align: left; cursor: pointer; }
+.pick:hover { color: var(--text); border-color: var(--accent); }
+.pick.chosen { border-style: solid; color: var(--text); }
+.pick svg { flex: none; color: var(--accent); }
+.pick .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick .kinds { flex: none; font-size: 0.78rem; opacity: 0.7; }
+/* A square button with just an icon (remove the file, switch the folder entry). */
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; padding: 0; color: var(--muted); cursor: pointer; }
+.iconbtn:hover { color: var(--text); background: var(--hover); }
 .row { display: flex; gap: 12px; align-items: center; }
 .row select, .row input { flex: 1; min-width: 0; width: auto; text-overflow: ellipsis; }
 .checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
-.file { font-size: 0.85rem; color: var(--muted); }
-.link { background: none; border: 0; color: var(--accent); cursor: pointer; white-space: nowrap; padding: 0; }
 .actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .error { color: #d14343; font-size: 0.85rem; }
 .primary { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; border: 0; padding: 7px 16px; cursor: pointer; }

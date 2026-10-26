@@ -106,7 +106,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); }
+.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); }
 .dialog { display: grid; gap: 14px; width: min(520px, 100%); padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
 h3 { margin: 0; font-size: 1rem; }
 input { box-sizing: border-box; width: 100%; padding: 9px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; }

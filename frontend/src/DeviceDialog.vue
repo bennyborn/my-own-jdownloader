@@ -36,7 +36,7 @@ const choose = (id: string) => {
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); }
+.overlay { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); }
 .dialog { display: grid; gap: 8px; width: min(380px, 100%); padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); }
 .head { display: flex; align-items: center; justify-content: space-between; }
 h3 { margin: 0; font-size: 1rem; }
