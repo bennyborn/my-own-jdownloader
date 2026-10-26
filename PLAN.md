@@ -182,6 +182,10 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 - Web UI notifications only work over https or on localhost (not on `http://server:port`); document it, or put the UI behind a
   reverse proxy with a certificate. The extension's notifications work everywhere.
 - Browser extension: Firefox manifest (`background.scripts` instead of `service_worker`); revise the design of the captcha page.
+- Captcha overlay: check whether our browser extension is active in the current browser. If not, the "Solve" button for
+  token captchas (Turnstile, hCaptcha, reCAPTCHA) makes no sense; hide it and show an error ("browser extension not
+  installed / not active") instead. Idea: the extension's content script announces itself on the web UI page (e.g. a
+  `postMessage` or a marker attribute on `<html>`), the overlay checks for it.
 - Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
 - Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
 - Mobile layout (phase 5) is still open; only a few `@media` rules exist.
