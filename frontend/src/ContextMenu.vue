@@ -209,3 +209,6 @@ button.danger:hover:not(:disabled) { color: #d14343; }
 @keyframes slide-up { from { transform: translateY(100%); } }
 @keyframes fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .menu.sheet, .backdrop.sheet { animation: none; } }
+kbd { margin-left: auto; color: var(--muted); font: inherit; font-size: 0.75rem; }
+@media (any-hover: none) { kbd { display: none; } } /* touch only: no keyboard shortcuts to point out */
+</style>
