@@ -502,6 +502,8 @@ select:not([multiple]) {
   background-position: right 12px center !important;
 }
 select:not([multiple]):disabled { opacity: 0.6; }
+/* Native checkboxes and radio buttons in the accent colour, not the browser's blue. */
+input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); }
 /* Dialogs appear softly: the dimmed, blurred backdrop fades in, the dialog rises a little and grows from 97%. */
 @keyframes overlay-in { from { opacity: 0; } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
