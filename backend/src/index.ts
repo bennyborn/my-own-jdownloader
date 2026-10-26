@@ -33,12 +33,20 @@ await client.connect()
 
 // Registers us as Anti-Captcha service in a device, unless the user has set up one of their own there.
 const solverUrl = process.env.JD_SOLVER_URL
-const registerSolver = async (context: DeviceContext) => {
+const solverFailing = new Set<string>()
+const registerSolver = async (context: DeviceContext, periodic = false) => {
   if (!solverUrl) return
+  const name = context.device.name
   try {
-    app.log.info(`Anti-Captcha solver registration for "${context.device.name}": ${await context.solver.register(solverUrl)}`)
+    const result = await context.solver.register(solverUrl)
+    solverFailing.delete(context.device.id)
+    if (!periodic) app.log.info(`Anti-Captcha solver registration for "${name}": ${result}`)
+    else if (result === 'registered') app.log.warn(`Anti-Captcha solver registration for "${name}" was gone from the JDownloader config, registered again`)
   } catch (e) {
-    app.log.error(`Anti-Captcha solver registration for "${context.device.name}" failed: ${e instanceof Error ? e.message : e}`)
+    // The periodic check reports a failing device once, not every round.
+    if (periodic && solverFailing.has(context.device.id)) return
+    solverFailing.add(context.device.id)
+    app.log.error(`Anti-Captcha solver registration for "${name}" failed: ${e instanceof Error ? e.message : e}`)
   }
 }
 const registry = new DeviceRegistry(client, {
@@ -53,6 +61,10 @@ const registry = new DeviceRegistry(client, {
 })
 await registry.start()
 if (!registry.all().length) throw new Error('No JDownloader device found on this account')
+
+// Something else can wipe our registration while we run (the API key was cleared once, after which JD had no solver for
+// Turnstile and skipped every link of the host), so it is checked again regularly. Only writes what differs.
+if (solverUrl) setInterval(() => void Promise.all(registry.all().map((c) => registerSolver(c, true))), 5 * 60 * 1000).unref()
 
 // The device a request is about: ?device=<id> (or "device" in the JSON body), otherwise the default device.
 const dev = (request: FastifyRequest): DeviceContext => {
