@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import DevicePicker from './DevicePicker.vue'
+import DeviceDialog from './DeviceDialog.vue'
 import { ALL, currentDevice, devices, formatHash, multiple, parseHash, select, selected, showingAll, useDevices, withDevice, type Tab } from './devices'
 import { ServerOff } from 'lucide-vue-next'
 import { formatBytes, formatSpeed } from './format'
@@ -75,6 +76,7 @@ watch(packages, (list) => {
 })
 const tabFromHash = (): Tab => parseHash().tab
 const tab = ref<Tab>(tabFromHash())
+const devicesOpen = ref(false)
 // The active tab and device live in the URL anchor so a reload (or a shared link) opens the same view.
 watch([tab, selected, settingsSection], () => {
   const hash = formatHash(tab.value, selected.value, settingsSection.value)
@@ -202,16 +204,20 @@ const dragFor = (device: string) => {
   <header>
     <h1>My Own JDownloader</h1>
     <nav>
-      <button type="button" :class="{ active: tab === 'downloads' }" @click="tab = 'downloads'"><Download :size="16" /> Downloads</button>
+      <button type="button" :class="{ active: tab === 'downloads' }" @click="tab = 'downloads'"><Download :size="16" /><span class="label">Downloads</span></button>
       <button type="button" :class="{ active: tab === 'grabber' }" @click="tab = 'grabber'">
-        <Link2 :size="16" /> Linkgrabber<span v-if="grabber.linkCount.value" class="count">{{ grabber.linkCount.value }}</span>
+        <Link2 :size="16" /><span class="label">Linkgrabber</span><span v-if="grabber.linkCount.value" class="count">{{ grabber.linkCount.value }}</span>
       </button>
-      <button type="button" :class="{ active: tab === 'settings' }" @click="tab = 'settings'"><Settings :size="16" /> Settings</button>
+      <button type="button" :class="{ active: tab === 'settings' }" @click="tab = 'settings'"><Settings :size="16" /><span class="label">Settings</span></button>
+      <button v-if="multiple" type="button" class="device-tab" :class="{ active: devicesOpen }" @click="devicesOpen = true">
+        <span class="logo" aria-hidden="true" /><span class="label">Devices</span>
+      </button>
     </nav>
     <NotifyToggle />
-    <DevicePicker v-if="multiple" :model-value="showingAll ? ALL : currentDevice" with-all @update:model-value="select" />
+    <DevicePicker v-if="multiple" class="header-picker" :model-value="showingAll ? ALL : currentDevice" with-all @update:model-value="select" />
     <ThemeToggle />
   </header>
+  <DeviceDialog v-model="devicesOpen" />
 
   <main>
     <SettingsView v-if="tab === 'settings'" />
@@ -366,6 +372,29 @@ nav button.active {
   background: var(--card);
   border-color: var(--border);
   box-shadow: inset 0 -2px 0 var(--accent);
+}
+nav .device-tab { display: none; }
+/* Phones: the tabs become a bottom bar within thumb reach; the status bar floats above it. */
+:root { --tabbar-h: 0px; }
+@media (max-width: 640px) {
+  :root { --tabbar-h: calc(60px + env(safe-area-inset-bottom)); }
+  nav {
+    position: fixed; inset: auto 0 0 0; z-index: 2; margin: 0; gap: 0; box-sizing: border-box;
+    height: var(--tabbar-h); padding-bottom: env(safe-area-inset-bottom);
+    background: var(--card); border-top: 1px solid var(--border);
+  }
+  nav button {
+    position: relative; flex: 1; flex-direction: column; justify-content: center; gap: 2px; height: auto;
+    padding: 0; border: 0; border-radius: 0; font-size: 0.72rem;
+  }
+  nav button.active { background: none; box-shadow: inset 0 2px 0 var(--accent); color: var(--accent); }
+  nav .count { position: absolute; top: 6px; left: calc(50% + 6px); }
+  .header-picker { display: none; }
+  nav .device-tab { display: flex; }
+  .logo { width: 16px; height: 16px; background: currentColor; mask: url(/logo-outline.svg) center / contain no-repeat; }
+  h1 { margin-right: auto; }
+  header { flex-wrap: nowrap; gap: 8px; }
+  main { padding-bottom: calc(190px + var(--tabbar-h)); }
 }
 .count { background: var(--accent); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 0.72rem; line-height: 1.5; }
 h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }

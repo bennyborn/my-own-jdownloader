@@ -62,6 +62,7 @@ const totals = computed(() => {
   <div class="fade" aria-hidden="true" />
   <footer class="statusbar">
     <SpeedGraph :samples="samples" :window-seconds="WINDOW_SECONDS" />
+    <button type="button" class="fab" title="Add links" aria-label="Add links" @click="$emit('addLinks')"><Plus :size="24" /></button>
     <div class="content">
       <button type="button" class="add" @click="$emit('addLinks')"><Plus :size="15" /> Add links</button>
       <dl>
@@ -97,14 +98,14 @@ const totals = computed(() => {
 .fade {
   position: fixed;
   inset: auto 0 0 0;
-  height: 200px;
+  height: calc(200px + var(--tabbar-h, 0px));
   pointer-events: none;
   background: linear-gradient(to top, var(--bg) 35%, transparent);
 }
 .statusbar {
   z-index: 1;
   position: fixed;
-  bottom: 24px;
+  bottom: calc(24px + var(--tabbar-h, 0px));
   left: 50%;
   transform: translateX(-50%);
   box-sizing: border-box;
@@ -127,6 +128,23 @@ dd { display: flex; align-items: center; gap: 10px; margin: 0; font-variant-nume
 .solve .count { min-width: 16px; padding: 0 5px; background: rgba(255, 255, 255, 0.25); border-radius: 999px; font-size: 0.75rem; text-align: center; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(209, 67, 67, 0.3); } }
 @media (prefers-reduced-motion: reduce) { .solve { animation: none; } }
+.fab { display: none; }
+/* Phones: two rows instead of a sideways scroll, "Add links" is a round button hanging over the bottom right corner of the bar. */
+@media (max-width: 640px) {
+  .statusbar { overflow: visible; }
+  .content { flex-wrap: wrap; gap: 6px 16px; padding: 10px 40px 10px 14px; overflow: visible; }
+  .add { display: none; }
+  .fab {
+    display: inline-flex; align-items: center; justify-content: center; position: absolute; right: -8px; bottom: -14px;
+    width: 48px; height: 48px; padding: 0; background: var(--accent); color: #fff; border: 0; border-radius: 50%;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4); cursor: pointer;
+  }
+  .solve { order: -1; flex: 1 1 100%; justify-content: center; }
+  dl { flex-wrap: wrap; gap: 6px 20px; }
+  dl div:last-child { order: -1; flex: 1 1 100%; }
+  dl div:last-child dd { font-size: 1.1rem; }
+  .dot { position: absolute; top: 12px; right: 14px; }
+}
 .dim { color: var(--muted); }
 .eta { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
 .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #d14343; }

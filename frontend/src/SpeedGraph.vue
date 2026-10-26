@@ -89,5 +89,5 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.graph { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.3; }
+.graph { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.3; border-radius: inherit; }
 </style>
