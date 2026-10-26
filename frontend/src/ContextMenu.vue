@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArchiveRestore, RotateCcw, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { closeMenu, menu, revealItem, scrollIgnored, menuArchives, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
+import { closeMenu, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
 const target = computed(() => menu.value?.target)
 // Starting only makes sense for what is waiting: not for a running or a finished download (JD has no per-download pause).
@@ -46,12 +46,14 @@ const archiveOptions = [
   { key: 'removeFilesAfterExtraction', label: 'Delete archives after extraction' },
   { key: 'removeDownloadLinksAfterExtraction', label: 'Remove links after extraction' }
 ] as const
+// Placeholders (disabled) while the lookup runs keep the menu from changing size when its answer arrives.
+const hasArchiveEntries = computed(() => menuArchives.value.length > 0 || menuArchivesPending.value)
 const canExtract = computed(() => menuArchives.value.some((a) => a.complete))
-const archiveOn = (key: (typeof archiveOptions)[number]['key']) => menuArchives.value.every((a) => a.settings[key])
+const archiveOn = (key: (typeof archiveOptions)[number]['key']) => menuArchives.value.length > 0 && menuArchives.value.every((a) => a.settings[key])
 
 const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeMenu()
 // The sheet scrolls on its own, and the address bar of a phone browser fires resize events: neither may close it.
-const onScroll = (e: Event) => !scrollIgnored() && !menuEl.value?.contains(e.target as Node) && closeMenu()
+const onScroll = (e: Event) => !scrollIgnored() && !(e.target as Element | null)?.classList?.contains?.('marquee') && !menuEl.value?.contains(e.target as Node) && closeMenu()
 watch(menu, (m) => !m && document.documentElement.style.removeProperty('--sheet-h'))
 const onResize = () => !sheet.value && closeMenu()
 onMounted(() => {
@@ -89,7 +91,7 @@ onUnmounted(() => {
           <OctagonPause :size="15" style="color: #e0a030" /> {{ target.stopMarked ? 'Remove stop mark' : 'Set stop mark here' }}
         </button>
       </li>
-      <li v-if="menuArchives.length">
+      <li v-if="hasArchiveEntries">
         <button type="button" role="menuitem" :disabled="!canExtract" :title="canExtract ? undefined : 'Not all parts are downloaded yet'" @click="startExtraction(target)">
           <ArchiveRestore :size="15" /> Extract now
         </button>
@@ -109,7 +111,7 @@ onUnmounted(() => {
           <Merge :size="15" /> Merge {{ target.mergeIds.length }} packages here
         </button>
       </li>
-      <li v-if="stopsRunning || canStart || menuArchives.length || (target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1)" class="sep" role="separator" />
+      <li v-if="stopsRunning || canStart || hasArchiveEntries || (target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1)" class="sep" role="separator" />
       <li>
         <button type="button" role="menuitem" @click="startRename(target)">
           <Pencil :size="15" /> Rename <kbd>F2</kbd>
@@ -145,10 +147,10 @@ onUnmounted(() => {
           <ArrowDownAZ :size="15" /> Sort links alphabetically
         </button>
       </li>
-      <template v-if="menuArchives.length">
+      <template v-if="hasArchiveEntries">
         <li class="sep" role="separator" />
         <li v-for="opt in archiveOptions" :key="opt.key">
-          <button type="button" role="menuitemcheckbox" :aria-checked="archiveOn(opt.key)" @click="toggleArchiveSetting(target, opt.key)">
+          <button type="button" role="menuitemcheckbox" :disabled="menuArchivesPending" :aria-checked="archiveOn(opt.key)" @click="toggleArchiveSetting(target, opt.key)">
             <span class="box"><Check v-if="archiveOn(opt.key)" :size="13" /></span> {{ opt.label }}
           </button>
         </li>

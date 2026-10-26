@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { askConfirm } from './confirm'
-import { currentDevice } from './devices'
+import { currentDevice, withDevice } from './devices'
 import { selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
 
 export type Area = 'downloads' | 'linkgrabber'
@@ -63,6 +63,26 @@ export interface ArchiveInfo {
 // Download list: the archives JD recognises for the item the menu is open on (none hides the archive entries).
 export const menuArchives = ref<ArchiveInfo[]>([])
 
+// The archive lookup is slow and decides which entries the menu has. What is known per device is whether its JD has
+// the extraction extension at all: that is remembered in localStorage, and while the lookup runs the archive entries
+// are shown as placeholders (menuArchivesPending) so the menu does not change size when the answer arrives.
+const extractionKey = (device: string) => `extraction-enabled:${device}`
+const readExtractionEnabled = (device: string) => {
+  try {
+    return localStorage.getItem(extractionKey(device)) === '1'
+  } catch {
+    return false
+  }
+}
+const writeExtractionEnabled = (device: string, enabled: boolean) => {
+  try {
+    localStorage.setItem(extractionKey(device), enabled ? '1' : '0')
+  } catch {
+    /* blocked: no placeholders then */
+  }
+}
+export const menuArchivesPending = ref(false)
+
 let openedAt = 0
 export const openMenu = (event: MouseEvent, target: Target) => {
   event.preventDefault()
@@ -72,13 +92,20 @@ export const openMenu = (event: MouseEvent, target: Target) => {
   openedAt = Date.now()
   menu.value = { x: event.clientX, y: event.clientY, target }
   menuArchives.value = []
+  menuArchivesPending.value = false
   if (target.area !== 'downloads') return
+  const device = target.device ?? currentDevice.value
+  const body = JSON.stringify({ ...idsOf(target), device })
+  menuArchivesPending.value = readExtractionEnabled(device)
   fetch('/api/downloads/archives', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...idsOf(target), device: target.device ?? currentDevice.value })
+    body
   })
-    .then((res) => (res.ok ? res.json() : []))
+    .then((res) => {
+      if (!res.ok) throw new Error(String(res.status))
+      return res.json()
+    })
     .then((archives: ArchiveInfo[]) => {
       // (the menu holds a reactive proxy of the target, so compare by identity of the item)
       const open = menu.value?.target
@@ -86,6 +113,15 @@ export const openMenu = (event: MouseEvent, target: Target) => {
     })
     .catch(() => {
       /* no archive entry then */
+    })
+    .finally(() => {
+      menuArchivesPending.value = false
+    })
+  fetch(withDevice('/api/jd-settings', device))
+    .then((res) => (res.ok ? res.json() : undefined))
+    .then((jd) => jd && writeExtractionEnabled(device, jd.extractionEnabled !== false))
+    .catch(() => {
+      /* keeps the remembered value */
     })
 }
 // Scrolls the page just enough to bring the item into view (centred in the free area); bottomLimit is the lower

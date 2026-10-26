@@ -42,6 +42,18 @@ export interface ConfigCategory {
   groups: ConfigGroup[]
 }
 
+// What the UI reacts to (see JdConfig.settings).
+export interface JdSettings {
+  extractionEnabled: boolean
+  packagizerEnabled: boolean
+  // Defaults of the "Add links" dialog.
+  autostart: boolean
+  autoExtract: boolean
+  overwritePackagizerRules: boolean
+  defaultFolder: string | null
+}
+const DEFAULT_SETTINGS: JdSettings = { extractionEnabled: true, packagizerEnabled: true, autostart: false, autoExtract: false, overwritePackagizerRules: true, defaultFolder: null }
+
 // Category -> the interfaces (matched by the end of their name) that belong to it. The ids are used by the
 // frontend's sidebar. Interfaces that match nothing (plugins, the desktop GUI) are not shown.
 const CATEGORIES: [string, string[]][] = [
@@ -198,6 +210,30 @@ export class JdConfig {
       categories.get(id)!.push(group)
     }
     return [...categories].map(([id, g]) => ({ id, groups: g }))
+  }
+
+  // The few JDownloader settings the UI itself reacts to (hides options, preselects defaults). Grows with the UI.
+  // Unknown (older JDownloader, failed call) falls back to DEFAULT_SETTINGS, so the UI stays usable.
+  async settings(): Promise<JdSettings> {
+    try {
+      const raw = await this.client.callDevice<RawEntry[]>(this.deviceId, '/config/list', ['.*(Extension|LinkgrabberSettings|PackagizerSettings|GeneralSettings).*', false, true, false, false])
+      const value = (iface: string, key: string): unknown => raw.find((e) => simple(e.interfaceName) === iface && e.key === key)?.value
+      const bool = (iface: string, key: string, fallback: boolean): boolean => {
+        const v = value(iface, key)
+        return typeof v === 'boolean' ? v : fallback
+      }
+      const folder = value('GeneralSettings', 'DefaultDownloadFolder')
+      return {
+        extractionEnabled: bool('Extension', 'EnableExtractionExtension', DEFAULT_SETTINGS.extractionEnabled),
+        packagizerEnabled: bool('PackagizerSettings', 'PackagizerEnabled', DEFAULT_SETTINGS.packagizerEnabled),
+        autostart: bool('LinkgrabberSettings', 'LinkgrabberAutoStartEnabled', DEFAULT_SETTINGS.autostart),
+        autoExtract: bool('LinkgrabberSettings', 'AutoExtractionEnabled', DEFAULT_SETTINGS.autoExtract),
+        overwritePackagizerRules: bool('LinkgrabberSettings', 'AddLinksDialogOverwritesPackagizerRulesEnabled', DEFAULT_SETTINGS.overwritePackagizerRules),
+        defaultFolder: typeof folder === 'string' && folder ? folder : null
+      }
+    } catch {
+      return DEFAULT_SETTINGS
+    }
   }
 
   set(interfaceName: string, storage: string | null, key: string, value: unknown): Promise<unknown> {

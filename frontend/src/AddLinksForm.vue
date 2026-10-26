@@ -34,6 +34,11 @@ const extractPassword = ref('')
 const downloadPassword = ref('')
 const autostart = ref(false)
 const autoExtract = ref(false)
+// The JDownloader's settings the form reacts to (see backend/src/jdconfig.ts). Without the extraction extension the
+// options for archives are hidden, without the packagizer the override checkbox.
+const extractionEnabled = ref(true)
+const packagizerEnabled = ref(true)
+const defaultFolder = ref<string | null>(null)
 const deepDecrypt = ref(false)
 const overwritePackagizerRules = ref(true)
 const error = ref('')
@@ -57,15 +62,36 @@ const loadFolders = async () => {
     const res = await fetch(withDevice('/api/linkgrabber/folders', device))
     if (!res.ok || device !== target.value) return
     folders.value = await res.json()
-    // Preselect the shortest known folder, i.e. the base download folder.
-    folder.value = [...folders.value].sort((a, b) => a.length - b.length)[0] ?? ''
+    // Preselect the JDownloader's default folder, else the shortest known one, i.e. the base download folder.
+    folder.value = folders.value.find((f) => f === defaultFolder.value) ?? [...folders.value].sort((a, b) => a.length - b.length)[0] ?? ''
   } catch {
     folders.value = []
     folder.value = ''
     /* folder list is optional */
   }
 }
-onMounted(loadFolders)
+const loadSettings = async () => {
+  const device = target.value
+  try {
+    const res = await fetch(withDevice('/api/jd-settings', device))
+    if (!res.ok || device !== target.value) return
+    const jd = await res.json()
+    extractionEnabled.value = jd.extractionEnabled !== false
+    packagizerEnabled.value = jd.packagizerEnabled !== false
+    defaultFolder.value = jd.defaultFolder ?? null
+    autostart.value = jd.autostart === true
+    autoExtract.value = jd.autoExtract === true
+    overwritePackagizerRules.value = jd.overwritePackagizerRules !== false
+  } catch {
+    /* the defaults stay */
+  }
+}
+// The settings first: they decide which folder is preselected.
+const load = async () => {
+  await loadSettings()
+  await loadFolders()
+}
+onMounted(() => void load())
 watch(target, (id) => {
   try {
     localStorage.setItem(TARGET_KEY, id)
@@ -73,7 +99,7 @@ watch(target, (id) => {
     /* only a convenience */
   }
   folders.value = []
-  void loadFolders()
+  void load()
 })
 
 const baseFolder = computed(() => (useCustomFolder.value ? customFolder.value.trim() : folder.value))
@@ -111,9 +137,9 @@ const submit = async () => {
         extractPassword: extractPassword.value,
         downloadPassword: downloadPassword.value,
         autostart: autostart.value,
-        autoExtract: autoExtract.value,
+        autoExtract: extractionEnabled.value && autoExtract.value,
         deepDecrypt: deepDecrypt.value,
-        overwritePackagizerRules: overwritePackagizerRules.value
+        overwritePackagizerRules: packagizerEnabled.value && overwritePackagizerRules.value
       })
     }
     if (file.value) {
@@ -156,13 +182,13 @@ const submit = async () => {
 
     <h3>Optional</h3>
     <input v-model="packageName" type="text" placeholder="Package name" />
-    <input v-model="extractPassword" type="text" placeholder="Archive password" autocomplete="off" />
+    <input v-if="extractionEnabled" v-model="extractPassword" type="text" placeholder="Archive password" autocomplete="off" />
     <input v-model="downloadPassword" type="text" placeholder="Link password" autocomplete="off" />
     <div class="checks">
       <label class="check"><input v-model="autostart" type="checkbox" /> Auto start</label>
-      <label class="check"><input v-model="autoExtract" type="checkbox" /> Auto extract</label>
+      <label v-if="extractionEnabled" class="check"><input v-model="autoExtract" type="checkbox" /> Auto extract</label>
       <label class="check"><input v-model="deepDecrypt" type="checkbox" /> Deep decrypt</label>
-      <label class="check"><input v-model="overwritePackagizerRules" type="checkbox" /> Overwrite packagizer rules</label>
+      <label v-if="packagizerEnabled" class="check"><input v-model="overwritePackagizerRules" type="checkbox" /> Overwrite packagizer rules</label>
     </div>
 
     <div class="actions">

@@ -349,8 +349,11 @@ app.post<{ Body: { linkIds?: unknown; packageIds?: unknown } }>('/api/downloads/
   const linkIds = idList(request.body?.linkIds ?? [])
   const packageIds = idList(request.body?.packageIds ?? [])
   if (!linkIds || !packageIds || linkIds.length + packageIds.length === 0) return reply.code(400).send({ error: 'Invalid request' })
+  // Without the extraction extension there is nothing to offer for archives (hides the entries of the context menu).
+  if (!(await dev(request).config.settings()).extractionEnabled) return []
   return dev(request).listOps.downloads.getArchives(linkIds, packageIds)
 })
+app.get('/api/jd-settings', async (request) => dev(request).config.settings())
 
 app.post<{ Body: { archiveIds?: unknown; settings?: Record<string, unknown> } }>('/api/downloads/archive-settings', async (request, reply) => {
   const { archiveIds, settings } = request.body ?? {}
