@@ -17,6 +17,19 @@ export interface ArchiveInfo {
 }
 
 // Write operations shared by the download list and the linkgrabber (rename, enable/disable, folder).
+export type MovePosition = 'top' | 'bottom' | 'up' | 'down'
+
+// The id the wanted items have to be placed after (-1: the top) for the move; undefined when they cannot go any further.
+const afterFor = (order: number[], wanted: Set<number>, position: MovePosition): number | undefined => {
+  const rest = order.filter((id) => !wanted.has(id))
+  const first = order.findIndex((id) => wanted.has(id))
+  const last = order.length - 1 - [...order].reverse().findIndex((id) => wanted.has(id))
+  if (position === 'top') return -1
+  if (position === 'bottom') return rest[rest.length - 1] ?? -1
+  if (position === 'up') return first === 0 ? undefined : (rest[rest.indexOf(order[first - 1]) - 1] ?? -1)
+  return last === order.length - 1 ? undefined : order[last + 1]
+}
+
 export class ListOps {
   constructor(
     private readonly client: MyJdClient,
@@ -133,31 +146,31 @@ export class ListOps {
     return { links: sorted.length }
   }
 
-  // Moves packages (or links, inside their own package) to the top or the bottom of the list.
+  // Moves packages (or links, inside their own package) to the top or the bottom of the list, or one step up / down.
   // The given ids keep their current relative order. Works for the download list and the linkgrabber.
-  async moveToEdge(kind: 'package' | 'link', ids: number[], position: 'top' | 'bottom'): Promise<void> {
+  async moveToEdge(kind: 'package' | 'link', ids: number[], position: MovePosition): Promise<void> {
     const wanted = new Set(ids)
     if (kind === 'package') {
       const list = (await this.call('queryPackages', [{ maxResults: -1, startAt: 0 }])) as { uuid: number }[]
       const order = list.map((p) => p.uuid)
       const moving = order.filter((id) => wanted.has(id))
-      const rest = order.filter((id) => !wanted.has(id))
       if (!moving.length) throw new Error('Packages not found')
-      await this.call('movePackages', [moving, position === 'top' ? -1 : (rest[rest.length - 1] ?? -1)])
+      const after = afterFor(order, wanted, position)
+      if (after !== undefined) await this.call('movePackages', [moving, after])
       return
     }
     const links = (await this.call('queryLinks', [{ maxResults: -1, startAt: 0, packageUUID: true }])) as { uuid: number; packageUUID: number }[]
     const byPackage = new Map<number, number[]>()
     for (const l of links) byPackage.set(l.packageUUID, [...(byPackage.get(l.packageUUID) ?? []), l.uuid])
-    let moved = 0
+    let found = 0
     for (const [packageId, order] of byPackage) {
       const moving = order.filter((id) => wanted.has(id))
       if (!moving.length) continue
-      const rest = order.filter((id) => !wanted.has(id))
-      await this.call('moveLinks', [moving, position === 'top' ? -1 : (rest[rest.length - 1] ?? -1), packageId])
-      moved += moving.length
+      found += moving.length
+      const after = afterFor(order, wanted, position)
+      if (after !== undefined) await this.call('moveLinks', [moving, after, packageId])
     }
-    if (!moved) throw new Error('Links not found')
+    if (!found) throw new Error('Links not found')
   }
 
   // Download list only: force-starts the given links / packages (also while the download controller is idle).

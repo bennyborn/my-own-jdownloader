@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArchiveRestore, RotateCcw, Check, ArrowDownToLine, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
+import { ArchiveRestore, RotateCcw, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { closeMenu, menu, revealItem, scrollIgnored, menuArchives, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
@@ -155,6 +155,16 @@ onUnmounted(() => {
       </template>
       <li class="sep" role="separator" />
       <li>
+        <button type="button" role="menuitem" @click="moveToEdge(target, 'up')">
+          <ArrowUp :size="15" /> Move up
+        </button>
+      </li>
+      <li>
+        <button type="button" role="menuitem" @click="moveToEdge(target, 'down')">
+          <ArrowDown :size="15" /> Move down
+        </button>
+      </li>
+      <li>
         <button type="button" role="menuitem" @click="moveToEdge(target, 'top')">
           <ArrowUpToLine :size="15" /> Move to top
         </button>
@@ -188,8 +198,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 button.danger:hover:not(:disabled) { color: #d14343; }
 .sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .box { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; border: 1px solid var(--border); border-radius: 4px; }
-kbd { margin-left: auto; color: var(--muted); font: inherit; font-size: 0.75rem; }
-</style>
 .title { padding: 6px 10px 10px; color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .backdrop.sheet { background: rgba(0, 0, 0, 0.35); animation: fade 0.2s ease-out; }
 .menu.sheet {

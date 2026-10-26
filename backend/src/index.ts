@@ -303,10 +303,10 @@ app.post<{ Params: { area: string }; Body: { kind?: unknown; ids?: unknown; posi
   const { area } = request.params
   const { kind, position } = request.body ?? {}
   const ids = idList(request.body?.ids)
-  if ((area !== 'downloads' && area !== 'linkgrabber') || (kind !== 'package' && kind !== 'link') || (position !== 'top' && position !== 'bottom') || !ids?.length) {
+  if ((area !== 'downloads' && area !== 'linkgrabber') || (kind !== 'package' && kind !== 'link') || !['top', 'bottom', 'up', 'down'].includes(position as string) || !ids?.length) {
     return reply.code(400).send({ error: 'Invalid request' })
   }
-  await dev(request).listOps[area].moveToEdge(kind, ids, position)
+  await dev(request).listOps[area].moveToEdge(kind, ids, position as 'top' | 'bottom' | 'up' | 'down')
   return { ok: true }
 })
 

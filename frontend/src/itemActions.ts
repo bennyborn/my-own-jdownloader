@@ -326,12 +326,14 @@ export const toggleArchiveSetting = async (t: Target, key: keyof ArchiveSettings
   }
 }
 
-// Moves the package(s) or link(s) to the top or bottom of their list (links: inside their package).
-export const moveToEdge = async (t: Target, position: 'top' | 'bottom') => {
-  closeMenu()
+// Moves the package(s) or link(s) to the top or bottom of their list, or one step up / down (links: inside their package).
+export const moveToEdge = async (t: Target, position: 'top' | 'bottom' | 'up' | 'down') => {
+  // The menu stays open: several steps in a row are the common case.
   const ids = t.kind === 'package' ? (t.mergeIds ?? [t.id]) : (t.selectedLinkIds ?? [t.id])
   try {
     await run(() => post(t, `/api/${t.area}/move-to-edge`, { kind: t.kind, ids, position }))
+    // The list is reordered by the next live update: keep the item in view once it has moved.
+    for (const delay of [400, 1200, 2500]) setTimeout(() => revealItem(t), delay)
   } catch {
     /* error is shown via actionError */
   }
