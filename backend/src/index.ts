@@ -663,7 +663,9 @@ app.get<{ Querystring: { device?: string } }>('/api/events', (request, reply) =>
   const unsubscribes = contexts.map((c) => {
     const send = (snapshot: unknown) => reply.raw.write(`event: downloads\ndata: ${JSON.stringify({ device: c.id, ...(snapshot as object) })}\n\n`)
     const unsubscribe = c.poller.subscribe(send)
-    send(c.poller.getSnapshot())
+    // The poller sleeps without viewers: its last snapshot may be hours old (a package then looks finished, not unpacking). The fresh one follows.
+    const cached = c.poller.getSnapshot()
+    if (Date.now() - cached.updatedAt < 10000) send(cached)
     return unsubscribe
   })
   request.raw.on('close', () => {
