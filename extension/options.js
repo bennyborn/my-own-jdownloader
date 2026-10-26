@@ -3,6 +3,7 @@ const password = document.getElementById('password')
 const msg = document.getElementById('msg')
 const cnl = document.getElementById('cnl')
 const notify = document.getElementById('notify')
+const autoTurnstile = document.getElementById('autoTurnstile')
 // Graphical dropdown for the Click'n'Load device ('' = default device of the backend, 'ask' = choose each time).
 const trigger = document.getElementById('cnlTrigger')
 const menu = document.getElementById('cnlMenu')
@@ -47,9 +48,10 @@ document.addEventListener('click', (e) => {
     trigger.setAttribute('aria-expanded', 'false')
   }
 })
-chrome.storage.local.get(['backendUrl', 'password', 'cnl', 'notify', 'cnlDevice']).then(async (s) => {
+chrome.storage.local.get(['backendUrl', 'password', 'cnl', 'notify', 'autoTurnstile', 'cnlDevice']).then(async (s) => {
   cnl.checked = s.cnl !== false
   notify.checked = s.notify !== false
+  autoTurnstile.checked = s.autoTurnstile !== false
   url.value = s.backendUrl ?? ''
   password.value = s.password ?? ''
   // The devices come from the backend; if it is not reachable, only the saved choice is offered.
@@ -63,7 +65,7 @@ chrome.storage.local.get(['backendUrl', 'password', 'cnl', 'notify', 'cnlDevice'
   renderDropdown()
 })
 document.getElementById('save').addEventListener('click', async () => {
-  await chrome.storage.local.set({ backendUrl: url.value.trim(), password: password.value, cnl: cnl.checked, notify: notify.checked, cnlDevice })
+  await chrome.storage.local.set({ backendUrl: url.value.trim(), password: password.value, cnl: cnl.checked, notify: notify.checked, autoTurnstile: autoTurnstile.checked, cnlDevice })
   msg.textContent = 'Saved.'
 })
 

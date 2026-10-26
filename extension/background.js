@@ -41,11 +41,49 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
   }
 })
 
+// Turnstile usually passes without a click, so while the web UI is open in some tab the hoster page is
+// opened in the background and the widget solves itself. Every job is tried once; if no token arrives
+// within AUTO_PATIENCE_MS the tab is brought to the front (Cloudflare wants a click after all).
+const AUTO_PATIENCE_MS = 20000
+const autoSolve = async (jobs) => {
+  const [{ autoTurnstile }, { autoOpened = {} }, { backendUrl }] = await Promise.all([chrome.storage.local.get('autoTurnstile'), chrome.storage.session.get('autoOpened'), getSettings()])
+  const open = new Set(jobs.map((j) => String(j.id)))
+  // Forget finished jobs.
+  const tried = Object.fromEntries(Object.entries(autoOpened).filter(([id]) => open.has(id)))
+  if (autoTurnstile !== false && backendUrl) {
+    for (const [id, entry] of Object.entries(tried)) {
+      if (!entry.focused && Date.now() - entry.at > AUTO_PATIENCE_MS) {
+        entry.focused = true
+        try {
+          const tab = await chrome.tabs.update(entry.tabId, { active: true })
+          await chrome.windows.update(tab.windowId, { focused: true })
+        } catch {
+          /* the tab is gone */
+        }
+      }
+    }
+    const fresh = jobs.filter((j) => /turnstile|cloudflare/i.test(j.challengeType) && j.kind !== 'image' && !tried[j.id])
+    // One at a time: the next one waits until the previous one is solved or closed.
+    const busy = Object.values(tried).length > 0
+    if (fresh.length && !busy && (await chrome.tabs.query({ url: `${backendUrl}/*` })).length) {
+      const job = fresh[0]
+      try {
+        const tab = await openCaptcha(job.id, job.device, false)
+        tried[job.id] = { tabId: tab.id, at: Date.now(), focused: false }
+      } catch {
+        tried[job.id] = { tabId: -1, at: Date.now(), focused: true } // do not retry
+      }
+    }
+  }
+  await chrome.storage.session.set({ autoOpened: tried })
+}
+
 const refreshBadge = async () => {
   try {
     const jobs = await api('/api/captcha')
     await chrome.action.setBadgeBackgroundColor({ color: '#d14343' })
     await chrome.action.setBadgeText({ text: jobs.length ? String(jobs.length) : '' })
+    await autoSolve(jobs).catch(() => {})
     await notifyNew(jobs)
   } catch {
     await chrome.action.setBadgeBackgroundColor({ color: '#888888' })
@@ -57,11 +95,11 @@ chrome.runtime.onStartup.addListener(() => chrome.alarms.create('poll', { period
 chrome.alarms.onAlarm.addListener((alarm) => alarm.name === 'poll' && void refreshBadge())
 
 // Opens the hoster's real page; the content script there recognises the marker in the hash.
-const openCaptcha = async (id, device) => {
+const openCaptcha = async (id, device, active = true) => {
   const job = await api(withDevice(`/api/captcha/${id}`, device))
   const url = new URL(job.siteUrl)
   url.hash = `myjd-captcha=${id}${device ? `&device=${encodeURIComponent(device)}` : ''}`
-  return chrome.tabs.create({ url: url.toString() })
+  return chrome.tabs.create({ url: url.toString(), active })
 }
 
 // Page world: replaces the hoster's page with an empty page in the style of the web UI and renders the

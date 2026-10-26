@@ -47,6 +47,7 @@
   <div class="card">
     <label>Backend URL <small>The address of your my-own-jdownloader, e.g. http://server:20031</small><input id="url" placeholder="http://server:20031" /></label>
     <label>UI password <small>Leave empty if the backend has no password</small><input id="password" type="password" autocomplete="off" /></label>
+    <label class="check"><input id="autoTurnstile" type="checkbox" /> Solve Cloudflare Turnstile automatically <small>While the web interface is open in a tab, the hoster page opens in the background; it comes to the front if a click is needed</small></label>
     <label class="check"><input id="notify" type="checkbox" /> Notify me about captchas <small>A browser notification when JDownloader waits for a captcha (checked every 30 seconds)</small></label>
     <div class="actions"><button type="button" id="test" class="secondary">Send test notification</button><span id="testmsg"></span></div>
     <div class="field">
