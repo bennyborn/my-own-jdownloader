@@ -194,7 +194,7 @@ onUnmounted(() => clearInterval(timer))
 <template>
   <article
     class="package"
-    :class="[state, { picked, 'menu-open': menuOn('downloads', 'package', pkg.uuid) }]"
+    :class="[state, { open: expanded, picked, 'menu-open': menuOn('downloads', 'package', pkg.uuid) }]"
     :draggable="packageDraggable"
     @mouseup="packageDraggable = false"
     @pointerenter="setHovered(pkgTarget)"
@@ -257,7 +257,7 @@ onUnmounted(() => clearInterval(timer))
           <span class="name" :title="l.name">{{ l.name }}</span>
           <span class="sub">
             <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="10" height="10" loading="lazy" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
-            {{ l.host }}
+            <span class="hostname">{{ l.host }}</span>
           </span>
         </div>
         <div class="cell size">
@@ -364,5 +364,20 @@ onUnmounted(() => clearInterval(timer))
 .package:has(> .pkg-aside > *) > *, .gpackage:has(> .pkg-aside > *) > * { grid-column: 1; }
 .package:has(> .pkg-aside > *) > .pkg-aside, .gpackage:has(> .pkg-aside > *) > .pkg-aside { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
 .package:has(> .pkg-aside > *) > .links, .gpackage:has(> .pkg-aside > *) > .glinks { grid-column: 1 / -1; }
+/* Phones: compact card; the link row is one line (host icon, name, percent). */
+@media (max-width: 640px) {
+  .head { align-items: flex-start; }
+  .head h2 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+  .package:not(.open) .path { display: none; }
+  .bar { margin: 8px 0 6px; }
+  .meta { gap: 2px 12px; }
+  .links { margin-top: 6px; }
+  .link { grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; min-height: 40px; padding: 2px 6px; }
+  .link .main { flex-direction: row; align-items: center; gap: 8px; }
+  .link .main .sub { order: -1; flex: none; min-height: 0; }
+  .link .hostname { display: none; }
+  .link .sub .hosticon { width: 16px; height: 16px; margin: 0; vertical-align: middle; }
+}
 .pkg-aside:not(:has(> *)) { display: none; }
 </style>
+@media (max-width: 640px) { .pkg-aside > * { width: 44px !important; height: 64px !important; } }
