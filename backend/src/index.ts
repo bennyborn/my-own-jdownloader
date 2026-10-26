@@ -1,3 +1,4 @@
+import { activity } from './activity.js'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import Fastify, { LogController, type FastifyRequest } from 'fastify'
@@ -27,6 +28,14 @@ const app = Fastify({
 const authHook = createAuthHook(UI_PASSWORD)
 if (authHook) app.addHook('onRequest', authHook)
 else app.log.warn('UI_PASSWORD is not set: UI and API are not protected')
+// A request that passed the authentication: remember who it was (see activity.ts). The health check, icons and plugin files do not count.
+app.addHook('onRequest', async (request) => {
+  const url = request.url
+  if ((url.startsWith('/api/') && !/^\/api\/(health|icons|plugins)\b/.test(url)) || url.startsWith('/mcp')) {
+    activity.touch(url, request.headers['user-agent'])
+    checkSolver()
+  }
+})
 
 const client = new MyJdClient(MYJD_EMAIL, MYJD_PASSWORD)
 await client.connect()
@@ -62,9 +71,14 @@ const registry = new DeviceRegistry(client, {
 await registry.start()
 if (!registry.all().length) throw new Error('No JDownloader device found on this account')
 
-// Something else can wipe our registration while we run (the API key was cleared once, after which JD had no solver for
-// Turnstile and skipped every link of the host), so it is checked again regularly. Only writes what differs.
-if (solverUrl) setInterval(() => void Promise.all(registry.all().map((c) => registerSolver(c, true))), 5 * 60 * 1000).unref()
+// Something else can wipe our registration while we run (the API key was cleared once, after which JD had no solver for Turnstile and skipped
+// every link of the host), so it is looked at again now and then. Not on a timer: a request of a client does it, when the last look is old.
+let lastSolverCheck = Date.now() // the start registered them
+const checkSolver = () => {
+  if (!solverUrl || Date.now() - lastSolverCheck < 5 * 60 * 1000) return
+  lastSolverCheck = Date.now()
+  void Promise.all(registry.all().map((c) => registerSolver(c, true)))
+}
 
 // The device a request is about: ?device=<id> (or "device" in the JSON body), otherwise the default device.
 const dev = (request: FastifyRequest): DeviceContext => {
@@ -86,10 +100,20 @@ app.addHook('onResponse', async (request, reply) => {
   else app.log.info(line)
 })
 
-app.get('/api/health', async () => ({ status: 'ok' }))
-app.get('/api/devices', async () => registry.list())
-app.get('/api/speed-history', async (request) => ({ now: Date.now(), samples: dev(request).bandwidth.getSamples() }))
-app.get('/api/downloads', async (request) => dev(request).poller.refresh())
+app.get('/api/health', async () => ({ status: 'ok', myjdCalls: client.calls, clients: activity.status() }))
+// The state of the devices is looked up now if the last look is older than 15 s (the list of devices: 30 s): a client that asks for it
+// (the popup of the extension, the web UI, the app's service) gets it fresh, and nobody asking means no call.
+app.get('/api/devices', async () => {
+  await registry.freshen(30_000).catch(() => undefined)
+  await Promise.all(registry.all().map((c) => c.bandwidth.probe(15_000)))
+  return registry.list()
+})
+app.get('/api/speed-history', async (request) => {
+  activity.view() // somebody looks at the graph: the speed is measured while that lasts
+  return { now: Date.now(), samples: dev(request).bandwidth.getSamples() }
+})
+// Clients that ask within two seconds of each other share one look at the device (the phone app's service asks on its own).
+app.get('/api/downloads', async (request) => dev(request).poller.refresh(2000))
 
 app.get<{ Params: { uuid: string } }>('/api/packages/:uuid/links', async (request, reply) => {
   const uuid = Number(request.params.uuid)
@@ -427,9 +451,12 @@ app.get('/api/device', async (request) => {
 // Open captchas. Without ?device= those of all devices: they have to be answered whichever device is
 // shown right now. Every job says which device it belongs to; the other captcha routes need that device.
 app.get<{ Querystring: { device?: string } }>('/api/captcha', async (request) => {
+  await registry.freshen().catch(() => undefined)
   const contexts = request.query.device ? [registry.resolve(request.query.device)] : registry.all()
   const lists = await Promise.all(
     contexts.map(async (c) => {
+      // A device that was offline the last time is looked at again (at most once a minute); online ones are just asked.
+      if (c.online === false) await c.bandwidth.probe(60_000)
       const own = c.online === false ? [] : await c.captchas.list().catch(() => [])
       return [...own, ...solverTasks.jobs(c.id)].map((j) => ({ ...j, device: c.id, deviceName: c.device.name }))
     })

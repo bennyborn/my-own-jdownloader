@@ -1,3 +1,4 @@
+import { activity } from './activity.js'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { BandwidthHistory } from './bandwidth.js'
@@ -31,6 +32,7 @@ export class DeviceContext {
     this.grabber = new Linkgrabber(client, device.id)
     this.captchas = new Captchas(client, device.id)
     this.bandwidth = new BandwidthHistory(client, device.id)
+    this.bandwidth.mode = () => (this.poller.hasListeners() || activity.viewing ? 'fast' : 'off')
     this.bandwidth.onChange = (online) => onStatus?.(this, online)
     this.solver = new SolverRegistration(client, device.id, solverStateFile)
     this.config = new JdConfig(client, device.id)
@@ -45,7 +47,7 @@ export class DeviceContext {
     return this.device.id
   }
 
-  // undefined until the first sample came back. The bandwidth sampler asks the device every few seconds anyway,
+  // undefined until the first sample came back. The bandwidth sampler asks the device every few seconds (only while somebody watches, else looked up when asked (see BandwidthHistory.probe)) anyway,
   // so it doubles as the reachability check (the device list's own status field is always UNKNOWN).
   get online(): boolean | undefined {
     return this.listed ? this.bandwidth.online : false
@@ -77,7 +79,6 @@ export class DeviceRegistry {
   private readonly contexts = new Map<string, DeviceContext>()
   private readonly lastSeen = new Map<string, number>()
   private defaultId?: string
-  private timer?: NodeJS.Timeout
   private readonly knownFile: string
 
   constructor(
@@ -87,9 +88,8 @@ export class DeviceRegistry {
     this.knownFile = join(dirname(options.legacySolverFile), 'devices.json')
   }
 
-  async start(refreshMs = 30_000): Promise<void> {
+  async start(): Promise<void> {
     await this.refresh()
-    this.timer = setInterval(() => void this.refresh().catch((e) => console.error('Device list refresh failed:', e instanceof Error ? e.message : e)), refreshMs)
     // Do not wait for devices that never answer, the first samples just fill in the online state.
     await Promise.race([Promise.all([...this.contexts.values()].map((c) => c.bandwidth.ready)), new Promise((resolve) => setTimeout(resolve, 8000))])
   }
@@ -109,7 +109,21 @@ export class DeviceRegistry {
     writeFileSync(this.knownFile, JSON.stringify(saved), { mode: 0o600 })
   }
 
+  // The list of devices of the account, looked up when somebody asks and the last look is older than maxAgeMs (no timer: a backend nobody
+  // talks to does not ask MyJDownloader). Callers at the same time share one call.
+  private lastRefreshAt = 0
+  private refreshing?: Promise<void>
+
+  freshen(maxAgeMs = 60_000): Promise<void> {
+    if (Date.now() - this.lastRefreshAt < maxAgeMs) return Promise.resolve()
+    this.refreshing ??= this.refresh().finally(() => {
+      this.refreshing = undefined
+    })
+    return this.refreshing
+  }
+
   async refresh(): Promise<void> {
+    this.lastRefreshAt = Date.now()
     const wanted = (d: Device) => !this.options.only?.length || this.options.only.includes(d.name)
     const listed = (await this.client.listDevices()).filter(wanted)
     const listedIds = new Set(listed.map((d) => d.id))
@@ -192,7 +206,6 @@ export class DeviceRegistry {
   }
 
   stop(): void {
-    clearInterval(this.timer)
     for (const c of this.contexts.values()) c.bandwidth.stop()
   }
 }

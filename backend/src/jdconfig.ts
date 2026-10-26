@@ -214,34 +214,38 @@ export class JdConfig {
 
   // The few JDownloader settings the UI itself reacts to (hides options, preselects defaults). Grows with the UI.
   // Unknown (older JDownloader, failed call) falls back to DEFAULT_SETTINGS, so the UI stays usable.
-  async settings(): Promise<JdSettings> {
-    try {
-      const raw = await this.client.callDevice<RawEntry[]>(this.deviceId, '/config/list', ['.*(Extension|LinkgrabberSettings|PackagizerSettings|GeneralSettings).*', false, true, false, false])
-      const value = (iface: string, key: string): unknown => raw.find((e) => simple(e.interfaceName) === iface && e.key === key)?.value
-      const bool = (iface: string, key: string, fallback: boolean): boolean => {
-        const v = value(iface, key)
-        return typeof v === 'boolean' ? v : fallback
-      }
-      const folder = value('GeneralSettings', 'DefaultDownloadFolder')
-      return {
-        extractionEnabled: bool('Extension', 'EnableExtractionExtension', DEFAULT_SETTINGS.extractionEnabled),
-        packagizerEnabled: bool('PackagizerSettings', 'PackagizerEnabled', DEFAULT_SETTINGS.packagizerEnabled),
-        autostart: bool('LinkgrabberSettings', 'LinkgrabberAutoStartEnabled', DEFAULT_SETTINGS.autostart),
-        autoExtract: bool('LinkgrabberSettings', 'AutoExtractionEnabled', DEFAULT_SETTINGS.autoExtract),
-        overwritePackagizerRules: bool('LinkgrabberSettings', 'AddLinksDialogOverwritesPackagizerRulesEnabled', DEFAULT_SETTINGS.overwritePackagizerRules),
-        defaultFolder: typeof folder === 'string' && folder ? folder : null
-      }
-    } catch {
-      return DEFAULT_SETTINGS
+  // The few JDownloader settings the UI itself reacts to (hides options, preselects defaults). Grows with the UI.
+  // Unknown (older JDownloader, failed call) falls back to DEFAULT_SETTINGS, so the UI stays usable.
+  settings(): Promise<JdSettings> {
+    return this.loadSettings().catch(() => DEFAULT_SETTINGS)
+  }
+
+  private async loadSettings(): Promise<JdSettings> {
+    const raw = await this.client.callDevice<RawEntry[]>(this.deviceId, '/config/list', ['.*(Extension|LinkgrabberSettings|PackagizerSettings|GeneralSettings).*', false, true, false, false])
+    const value = (iface: string, key: string): unknown => raw.find((e) => simple(e.interfaceName) === iface && e.key === key)?.value
+    const bool = (iface: string, key: string, fallback: boolean): boolean => {
+      const v = value(iface, key)
+      return typeof v === 'boolean' ? v : fallback
+    }
+    const folder = value('GeneralSettings', 'DefaultDownloadFolder')
+    return {
+      extractionEnabled: bool('Extension', 'EnableExtractionExtension', DEFAULT_SETTINGS.extractionEnabled),
+      packagizerEnabled: bool('PackagizerSettings', 'PackagizerEnabled', DEFAULT_SETTINGS.packagizerEnabled),
+      autostart: bool('LinkgrabberSettings', 'LinkgrabberAutoStartEnabled', DEFAULT_SETTINGS.autostart),
+      autoExtract: bool('LinkgrabberSettings', 'AutoExtractionEnabled', DEFAULT_SETTINGS.autoExtract),
+      overwritePackagizerRules: bool('LinkgrabberSettings', 'AddLinksDialogOverwritesPackagizerRulesEnabled', DEFAULT_SETTINGS.overwritePackagizerRules),
+      defaultFolder: typeof folder === 'string' && folder ? folder : null
     }
   }
 
-  set(interfaceName: string, storage: string | null, key: string, value: unknown): Promise<unknown> {
-    return this.client.callDevice(this.deviceId, '/config/set', [interfaceName, storage, key, value])
+  async set(interfaceName: string, storage: string | null, key: string, value: unknown): Promise<unknown> {
+    const result = await this.client.callDevice(this.deviceId, '/config/set', [interfaceName, storage, key, value])
+    return result
   }
 
-  reset(interfaceName: string, storage: string | null, key: string): Promise<unknown> {
-    return this.client.callDevice(this.deviceId, '/config/reset', [interfaceName, storage, key])
+  async reset(interfaceName: string, storage: string | null, key: string): Promise<unknown> {
+    const result = await this.client.callDevice(this.deviceId, '/config/reset', [interfaceName, storage, key])
+    return result
   }
 
   // The plugins that have settings (hosters, crawlers, ...), without their entries.

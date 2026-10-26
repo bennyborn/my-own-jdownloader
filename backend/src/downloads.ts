@@ -65,6 +65,7 @@ export class DownloadsPoller {
   private listeners = new Set<Listener>()
   private timer?: NodeJS.Timeout
   private polling = false
+  private snapshotEpoch = -1 // what the client's change counter said when the snapshot was taken
 
   constructor(
     private readonly client: MyJdClient,
@@ -74,6 +75,11 @@ export class DownloadsPoller {
 
   getSnapshot(): DownloadsSnapshot {
     return this.snapshot
+  }
+
+  // Whether anybody watches (a page with the live view open): the speed sampler is quicker then.
+  hasListeners(): boolean {
+    return this.listeners.size > 0
   }
 
   subscribe(listener: Listener): () => void {
@@ -188,7 +194,10 @@ export class DownloadsPoller {
     for (let i = 0; i < linkIds.length; i++) await this.client.callDevice(this.deviceId, '/downloadsV2/moveLinks', [[linkIds[i]], i === 0 ? afterLinkId : linkIds[i - 1], packageId])
   }
 
-  async refresh(): Promise<DownloadsSnapshot> {
+  // Asks the device now. maxAgeMs > 0: a snapshot that young is good enough (several clients asking within moments share one look).
+  // Not when something was changed since that look: then the snapshot cannot be true any more.
+  async refresh(maxAgeMs = 0): Promise<DownloadsSnapshot> {
+    if (maxAgeMs > 0 && Date.now() - this.snapshot.updatedAt < maxAgeMs && this.snapshotEpoch === this.client.epoch(this.deviceId)) return this.snapshot
     await this.poll()
     return this.snapshot
   }
@@ -196,6 +205,7 @@ export class DownloadsPoller {
   private async poll(): Promise<void> {
     if (this.polling) return
     this.polling = true
+    const epoch = this.client.epoch(this.deviceId)
     try {
       const stopMark = await this.getStopMark()
       const raw = await this.client.callDevice<Partial<DownloadPackage>[]>(
@@ -251,6 +261,7 @@ export class DownloadsPoller {
         const pkg = l.running && l.host ? packages.find((p) => p.uuid === l.packageUUID) : undefined
         if (pkg && !pkg.activeHosts.includes(l.host!)) pkg.activeHosts.push(l.host!)
       }
+      this.snapshotEpoch = epoch
       this.snapshot = {
         updatedAt: Date.now(),
         packages,
