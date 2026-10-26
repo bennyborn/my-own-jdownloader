@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The logo inside the safe zone of the adaptive icon (the outer part is cut by the launcher's mask). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/logo" android:inset="19%" />
