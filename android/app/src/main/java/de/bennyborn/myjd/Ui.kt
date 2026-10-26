@@ -25,7 +25,6 @@ fun Context.dp(n: Int) = (n * resources.displayMetrics.density).toInt()
 const val ACCENT = 0xFF10AC84.toInt()
 const val MUTED = 0xFF8B949E.toInt()
 const val ERROR = 0xFFD14343.toInt()
-const val CARD = 0xFF161B22.toInt()
 const val BORDER = 0xFF30363D.toInt()
 const val BASE = 0xFF0D1117.toInt()
 

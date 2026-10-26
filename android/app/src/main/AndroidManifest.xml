@@ -36,11 +36,8 @@
             </intent-filter>
         </receiver>
         <activity android:name=".SolverActivity" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
-        <service android:name=".WatchService" android:exported="false" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Polls the user's own backend for open captchas" />
-        </service>
-        <service android:name=".CnlService" android:exported="false" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Local Click'n'Load endpoint on 127.0.0.1:9666 for websites on this phone" />
+        <service android:name=".BackgroundService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Polls the user's own backend for captchas and finished downloads, and answers Click'n'Load on 127.0.0.1:9666" />
         </service>
     </application>
 </manifest>

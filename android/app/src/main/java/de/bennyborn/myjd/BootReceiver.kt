@@ -8,8 +8,7 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         try {
-            WatchService.sync(context)
-            CnlService.sync(context)
+            BackgroundService.sync(context)
         } catch (e: Exception) {
             /* Android refused a background start: the next time the app is opened */
         }

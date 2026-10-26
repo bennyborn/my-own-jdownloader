@@ -134,8 +134,7 @@ class MainActivity : GuardedActivity() {
         super.onResume()
         if (!::web.isInitialized) return
         // Back from the system settings the permission may have changed: service and bell follow.
-        WatchService.sync(this)
-        CnlService.sync(this)
+        BackgroundService.sync(this)
         tellPage()
         val url = Config.url(this)
         val pw = Config.password(this)
@@ -148,7 +147,7 @@ class MainActivity : GuardedActivity() {
 
     private fun enableCnl() {
         Config.setCnl(this, true)
-        CnlService.sync(this)
+        BackgroundService.sync(this)
         tellPage()
     }
 
@@ -167,7 +166,7 @@ class MainActivity : GuardedActivity() {
         }
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
             Config.setNotify(this, true)
-            WatchService.sync(this)
+            BackgroundService.sync(this)
             Notifier.test(this)
         }
         tellPage()
@@ -254,7 +253,7 @@ class MainActivity : GuardedActivity() {
                     "blocked" -> startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
                     else -> {
                         Config.setNotify(this@MainActivity, !Config.notify(this@MainActivity))
-                        WatchService.sync(this@MainActivity)
+                        BackgroundService.sync(this@MainActivity)
                         tellPage()
                     }
                 }
@@ -297,7 +296,7 @@ class MainActivity : GuardedActivity() {
                 when {
                     !on -> {
                         Config.setCnl(this@MainActivity, false)
-                        CnlService.sync(this@MainActivity)
+                        BackgroundService.sync(this@MainActivity)
                         tellPage()
                     }
                     Notifier.enabled(this@MainActivity) -> enableCnl()

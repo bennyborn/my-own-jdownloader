@@ -1,13 +1,7 @@
 package de.bennyborn.myjd
 
-import android.app.Notification
-import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.graphics.drawable.Icon
-import android.os.IBinder
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -17,51 +11,39 @@ import java.net.Socket
 import java.net.URLDecoder
 import kotlin.concurrent.thread
 
-// Click'n'Load on the phone: websites send their links to "a JDownloader on this computer" (http://127.0.0.1:9666). This
-// service is that JDownloader. It only listens on the phone itself (loopback) and hands the links to the backend, like the
-// browser extension does on a computer.
-class CnlService : Service() {
-    @Volatile private var server: ServerSocket? = null
+// Click'n'Load on the phone: websites send their links to "a JDownloader on this computer" (http://127.0.0.1:9666). This is that
+// JDownloader. It only listens on the phone itself (loopback) and hands the links to the backend, like the browser extension does on
+// a computer. Started and stopped by the BackgroundService.
+class CnlServer(private val ctx: Context) {
+    @Volatile private var socket: ServerSocket? = null
+    @Volatile private var stopped = false
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    fun start() {
+        thread { serve() }
+    }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // The "Turn off" button of the notification.
-        if (intent?.action == STOP) {
-            Config.setCnl(this, false)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        Notifier.channels(this)
-        val stop = PendingIntent.getService(this, 3, Intent(this, CnlService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE)
-        val entry = Notifier.builder(this, Notifier.CNL, logo = false).setContentTitle("Click'n'Load is on")
-            .setContentText("Websites can send links to this phone").setContentIntent(Notifier.openApp(this)).setOngoing(true)
-            .addAction(Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_stat), "Turn off", stop).build()).build()
-        startForeground(3, entry, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        if (server == null) thread { serve() }
-        return START_STICKY
+    fun stop() {
+        stopped = true
+        socket?.close()
+        socket = null
     }
 
     private fun serve() {
-        val socket = try {
+        val s = try {
             ServerSocket(PORT, 20, InetAddress.getByName("127.0.0.1"))
         } catch (e: Exception) {
-            Notifier.info(this, 4, "Click'n'Load", "Port $PORT is in use, Click'n'Load could not start")
-            stopSelf()
+            // Something else holds the port: switch the feature off again, so the button and the entry tell the truth.
+            Notifier.info(ctx, 4, "Click'n'Load", "Port $PORT is in use, Click'n'Load could not start")
+            Config.setCnl(ctx, false)
+            BackgroundService.sync(ctx)
             return
         }
-        server = socket
-        while (!socket.isClosed) {
-            val client = try { socket.accept() } catch (e: Exception) { break }
+        if (stopped) return s.close()
+        socket = s
+        while (!s.isClosed) {
+            val client = try { s.accept() } catch (e: Exception) { break }
             thread { try { handle(client) } catch (e: Exception) { /* a broken request is dropped */ } }
         }
-    }
-
-    override fun onDestroy() {
-        server?.close()
-        server = null
-        super.onDestroy()
     }
 
     private class Request(val method: String, val path: String, val query: String, val headers: Map<String, String>, val body: ByteArray)
@@ -150,18 +132,12 @@ class CnlService : Service() {
             put("crypted", p["crypted"]); put("jk", p["jk"]); put("key", p["k"])
         } else put("urls", p["urls"])
         put("passwords", p["passwords"]); put("packageName", p["package"]); put("source", p["source"] ?: referrer); put("referrer", referrer)
-        return Cnl.route(this, "/api/linkgrabber/cnl", payload, false)
+        return Cnl.route(ctx, "/api/linkgrabber/cnl", payload, false)
     }
 
-    companion object {
-        private const val STOP = "de.bennyborn.myjd.CNL_STOP"
-        private const val PORT = 9666
-        private const val MAX_BODY = 5_000_000
-
-        fun sync(c: Context) {
-            val intent = Intent(c, CnlService::class.java)
-            if (Config.url(c) != null && Config.cnl(c) && Notifier.enabled(c)) c.startForegroundService(intent) else c.stopService(intent)
-        }
+    private companion object {
+        const val PORT = 9666
+        const val MAX_BODY = 5_000_000
     }
 }
 
