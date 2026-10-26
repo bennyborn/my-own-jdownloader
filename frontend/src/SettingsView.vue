@@ -27,7 +27,7 @@ const fold = (deviceId: string) => {
 
 <template>
   <div class="settings">
-    <nav class="sidebar" aria-label="Settings sections">
+    <div class="sidebar" role="navigation" aria-label="Settings sections">
       <h2 class="ui"><Monitor :size="13" /> This interface</h2>
       <button v-for="s in uiSections" :key="s.id" type="button" class="ui" :class="{ active: settingsSection === s.id }" @click="settingsSection = s.id">
         <component :is="s.icon" :size="16" /> {{ s.label }}
@@ -53,7 +53,7 @@ const fold = (deviceId: string) => {
           <component :is="s.icon" :size="16" /> {{ s.label }}
         </button>
       </template>
-    </nav>
+    </div>
     <section class="content">
       <p class="scope" :class="current.scope">
         <template v-if="current.scope === 'jd'">
@@ -62,11 +62,15 @@ const fold = (deviceId: string) => {
         <template v-else><Monitor :size="14" /> Stored in this web interface only: the JDownloader is not affected.</template>
       </p>
       <h2 class="title">{{ current.label }}</h2>
-      <PluginSettings v-if="current.id === 'plugins'" />
-      <McpSettings v-else-if="current.id === 'mcp'" />
-      <AccountSettings v-else-if="current.id === 'accounts'" />
-      <HosterSettings v-else-if="current.id === 'hosters'" />
-      <JdSettings v-else-if="current.category" :key="current.id" :category="current.category" :title="current.label" />
+      <Transition name="sub" mode="out-in">
+        <div :key="current.id">
+        <PluginSettings v-if="current.id === 'plugins'" />
+        <McpSettings v-else-if="current.id === 'mcp'" />
+        <AccountSettings v-else-if="current.id === 'accounts'" />
+        <HosterSettings v-else-if="current.id === 'hosters'" />
+        <JdSettings v-else-if="current.category" :key="current.id" :category="current.category" :title="current.label" />
+        </div>
+      </Transition>
     </section>
   </div>
 </template>
@@ -94,11 +98,21 @@ const fold = (deviceId: string) => {
 .scope { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4; }
 .scope.jd { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .scope.ui { color: var(--muted); background: var(--card); border: 1px solid var(--border); }
+.sub-enter-active, .sub-leave-active { transition: opacity 0.12s ease, transform 0.12s ease; }
+.sub-enter-from { opacity: 0; transform: translateY(8px); }
+.sub-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .sub-enter-active, .sub-leave-active { transition: none; } }
 .title { margin: 0 0 12px; font-size: 1.1rem; }
 @media (max-width: 720px) {
   .settings { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .sidebar { position: static; display: flex; flex-wrap: wrap; align-items: center; }
   .sidebar h2 { flex-basis: 100%; margin: 0 0 4px; }
   .sidebar h2.jd { margin-top: 12px; padding-top: 12px; }
+  .sidebar { gap: 6px; }
+  .sidebar button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; }
+  .sidebar button.active, .sidebar button.jd.active { background: var(--card); border-color: var(--accent); box-shadow: none; color: var(--text); }
+  .dev { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .dev .devhead { flex-basis: 100%; border: 0; border-radius: 8px; padding: 6px 4px; }
+  .sidebar button.nested { margin-left: 0; }
 }
 </style>

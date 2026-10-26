@@ -107,6 +107,7 @@ const onHashChange = () => {
   if (section && SECTIONS.some((s) => s.id === section)) settingsSection.value = section
   if (device !== undefined && device !== selected.value) select(device)
 }
+const toTop = () => window.scrollTo(0, 0)
 onMounted(() => window.addEventListener('hashchange', onHashChange))
 onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
 const addOpen = ref(false)
@@ -227,6 +228,8 @@ const dragFor = (device: string) => {
   <DeviceDialog v-model="devicesOpen" />
 
   <main>
+    <Transition name="tab" mode="out-in" @after-leave="toTop">
+    <div :key="tab" class="view">
     <SettingsView v-if="tab === 'settings'" />
     <template v-else-if="tab === 'downloads' && showingAll">
       <section v-for="s in sections" :key="s.device.id" class="device-section">
@@ -283,9 +286,13 @@ const dragFor = (device: string) => {
       </section>
     </template>
     <LinkgrabberView v-else :state="grabber.state.value" :analysing="grabber.analysing.value" @changed="grabber.reload()" />
+    </div>
+    </Transition>
   </main>
 
-  <StatusBar :snapshot="statusSnapshot" :device="showingAll ? '' : currentDevice" :connected="connected" :solver-jobs="captchas.widgetJobs.value" @add-links="addOpen = true" />
+  <div class="status-wrap" :class="{ hidden: tab === 'settings' }">
+    <StatusBar :snapshot="statusSnapshot" :device="showingAll ? '' : currentDevice" :connected="connected" :solver-jobs="captchas.widgetJobs.value" @add-links="addOpen = true" />
+  </div>
   <ContextMenu />
   <CaptchaDialog :job="captchas.imageJobs.value[0] ?? null" :more="Math.max(0, captchas.imageJobs.value.length - 1)" @handled="captchas.markHandled" @changed="captchas.reload()" />
   <SolverAlert v-if="!captchas.imageJobs.value.length" :job="captchas.alertJobs.value[0] ?? null" @dismiss="captchas.dismiss" />
@@ -299,6 +306,11 @@ const dragFor = (device: string) => {
 </template>
 
 <style>
+/* Touch devices: a long press opens the context menu, so no text selection / callout (inputs stay selectable). */
+@media (pointer: coarse) {
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+}
 :root {
   color-scheme: light dark;
   --bg: #f6f8fa;
@@ -402,12 +414,20 @@ nav .device-tab { display: none; }
   h1 { margin-right: auto; }
   header { flex-wrap: nowrap; gap: 8px; }
   main { padding-bottom: calc(190px + var(--tabbar-h) + var(--sheet-h, 0px)); }
+  .status-wrap.hidden { display: none; }
+  main:has(.settings) { padding-bottom: calc(24px + var(--tabbar-h)); }
 }
 .count { background: var(--accent); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 0.72rem; line-height: 1.5; }
 h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .summary { display: flex; align-items: center; gap: 12px; color: var(--muted); }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: #d14343; }
 .dot.on { background: var(--ok); }
+.status-wrap { display: contents; }
+.view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.tab-enter-active, .tab-leave-active { transition: opacity 0.12s ease, transform 0.12s ease; }
+.tab-enter-from { opacity: 0; transform: translateY(8px); }
+.tab-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .tab-enter-active, .tab-leave-active { transition: none; } }
 main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .error { color: #d14343; text-align: center; }
 .dragging { opacity: 0.4; }
@@ -426,12 +446,14 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid
 .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .badge { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); }
 .running .badge { color: var(--accent); }
-.finished .badge, .extracted .badge { color: var(--ok); }
-.extracting .badge { color: var(--extract-text); }
+.finished .badge { color: var(--ok); }
+.extracting .badge, .extracted .badge { color: var(--extract-text); }
 .extract-failed .badge, .download-error .badge { color: #d14343; }
 .bar { height: 8px; margin: 10px 0 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .fill { height: 100%; background: var(--accent); transition: width 0.5s; }
-.finished .fill, .extracted .fill { background: var(--ok); }
+.finished .fill { background: var(--ok); }
+/* Extracted stays yellow like extracting, just without the moving stripes. */
+.extracted .fill, .link.extracted .pfill { background: var(--extract); }
 .extract-failed .fill, .download-error .fill { background: #d14343; }
 /* No percentage is available while JD unpacks: a moving yellow stripe pattern shows that work is going on. */
 .extracting .fill, .link.extracting .pfill {

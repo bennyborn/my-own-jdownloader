@@ -103,7 +103,7 @@ const totals = computed(() => {
   background: linear-gradient(to top, var(--bg) 35%, transparent);
 }
 .statusbar {
-  z-index: 1;
+  z-index: 10;
   position: fixed;
   bottom: calc(24px + var(--tabbar-h, 0px));
   left: 50%;
@@ -135,7 +135,7 @@ dd { display: flex; align-items: center; gap: 10px; margin: 0; font-variant-nume
   .content { flex-wrap: wrap; gap: 6px 16px; padding: 10px 40px 10px 14px; overflow: visible; }
   .add { display: none; }
   .fab {
-    display: inline-flex; align-items: center; justify-content: center; position: absolute; right: -8px; bottom: -14px;
+    display: inline-flex; align-items: center; justify-content: center; position: absolute; z-index: 10; right: -8px; bottom: -14px;
     width: 48px; height: 48px; padding: 0; background: var(--accent); color: #fff; border: 0; border-radius: 50%;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4); cursor: pointer;
   }

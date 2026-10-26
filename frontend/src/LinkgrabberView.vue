@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vMarquee } from './marquee'
 import { coarsePointer, longPress } from './longPress'
 import { toneIcon } from './iconTone'
 import { withDevice } from './devices'
@@ -302,7 +303,7 @@ const removeSelected = async () => {
         >
           <input type="checkbox" :checked="selected.has(l.uuid)" @click.stop="onLinkClick($event, l)" />
           <span class="lcell">
-            <span class="lname" :title="l.name">{{ l.name }}</span>
+            <span v-marquee="selected.has(l.uuid)" class="lname" :title="l.name">{{ l.name }}</span>
             <span v-if="l.variant" class="variant" :title="`Variant: ${l.variant.name}`">{{ l.variant.name }}</span>
           </span>
           <span class="muted host">{{ l.host }}</span>
@@ -378,6 +379,7 @@ button.danger { color: #d14343; }
 .glink.checking { opacity: 0.5; }
 .lcell { display: grid; gap: 2px; min-width: 0; }
 .variant { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.78rem; }
+@media (max-width: 640px) { .marquee { text-overflow: clip !important; } }
 .lname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }

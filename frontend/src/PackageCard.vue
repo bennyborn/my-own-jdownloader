@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { toneIcon } from './iconTone'
 import { withDevice } from './devices'
-import { ChevronRight, Clock, Folder, Gauge, GripVertical, HardDrive, Link2, PowerOff, OctagonPause, Zap } from 'lucide-vue-next'
+import { Check, ChevronRight, Clock, Download, Hourglass, Package, PackageOpen, SkipForward, TriangleAlert, Folder, Gauge, GripVertical, HardDrive, Link2, PowerOff, OctagonPause, Zap } from 'lucide-vue-next'
+import { vMarquee } from './marquee'
 import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages, selectedPackagesDevice } from './expandedState'
 import { showError } from './toast'
 import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } from './itemActions'
@@ -209,7 +210,7 @@ onUnmounted(() => clearInterval(timer))
     <button class="head" :aria-expanded="expanded" @click="onHeadClick">
       <GripVertical :size="16" class="grip" title="Drag to reorder" @mousedown.stop="packageDraggable = true" @touchstart.passive="packageDraggable = true" />
       <ChevronRight :size="16" class="chevron" :class="{ open: expanded }" />
-      <h2 :title="pkg.name">{{ pkg.name }}</h2>
+      <h2 v-marquee="picked" :title="pkg.name">{{ pkg.name }}</h2>
       <OctagonPause v-if="pkg.stopMarked" :size="15" class="stopmark" title="Stop mark: JD stops before this package" />
       <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
       <span v-else class="badge">{{ state === 'extract-failed' ? 'extract failed' : state === 'download-error' ? 'error' : state }}</span>
@@ -261,7 +262,7 @@ onUnmounted(() => clearInterval(timer))
         @dragend.stop="drag.onDragEnd()"
       >
         <div class="main">
-          <span class="name" :title="l.name">{{ l.name }}</span>
+          <span v-marquee="selectedDownloadLinks.has(l.uuid)" class="name" :title="l.name">{{ l.name }}</span>
           <span class="sub">
             <img v-if="l.host" class="hosticon" :src="`/api/icons/${l.host}`" alt="" width="10" height="10" loading="lazy" @load="toneIcon" @error="($event.target as HTMLElement).style.display = 'none'" />
             <span class="hostname">{{ l.host }}</span>
@@ -275,6 +276,17 @@ onUnmounted(() => clearInterval(timer))
           <span class="badge" :class="linkBadge(l).kind"><OctagonPause v-if="l.stopMarked" :size="12" class="stopmark" aria-label="Stop mark" /><Zap v-if="showForced(l)" :size="12" class="forced" aria-label="Force-started" />{{ linkBadge(l).text }}</span>
           <span class="sub">{{ linkBadge(l).detail }}</span>
         </div>
+        <span class="stateicon" :class="linkBadge(l).kind" :title="linkBadge(l).text">
+          <Download v-if="linkBadge(l).kind === 'running'" :size="16" />
+          <Package v-else-if="linkBadge(l).kind === 'extracting'" :size="16" />
+          <PackageOpen v-else-if="linkBadge(l).kind === 'extracted'" :size="16" />
+          <Check v-else-if="linkBadge(l).kind === 'finished'" :size="16" />
+          <Hourglass v-else-if="['waiting', 'captcha'].includes(linkBadge(l).kind)" :size="16" />
+          <TriangleAlert v-else-if="['extract-failed', 'idle-error'].includes(linkBadge(l).kind)" :size="16" />
+          <SkipForward v-else-if="linkBadge(l).kind === 'skipped'" :size="16" />
+          <PowerOff v-else-if="linkBadge(l).kind === 'disabled'" :size="16" />
+          <Clock v-else :size="16" />
+        </span>
         <div class="pbar"><div class="pfill" /><span>{{ stateOf(l) === 'extracting' ? 'unpacking' : percentOf(l.bytesLoaded, l.bytesTotal).toFixed(0) + '%' }}</span></div>
       </div>
     </div>
@@ -297,6 +309,7 @@ onUnmounted(() => clearInterval(timer))
 }
 .download-error .head h2 { color: #d14343; }
 .head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .marquee { text-overflow: clip !important; } }
 .chevron { flex: none; transition: transform 0.15s; color: var(--muted); }
 .chevron.open { transform: rotate(90deg); }
 .toolbar { display: flex; justify-content: flex-end; }
@@ -309,8 +322,7 @@ onUnmounted(() => clearInterval(timer))
 .head .stopmark { flex: none; color: #e0a030; }
 .link .badge .stopmark { margin-right: 4px; vertical-align: -1px; color: #e0a030; }
 .link .badge .forced { margin-right: 4px; vertical-align: -1px; color: #e0a030; }
-.link .badge.extracting { color: var(--extract-text); }
-.link .badge.extracted { color: var(--ok); }
+.link .badge.extracting, .link .badge.extracted { color: var(--extract-text); }
 .link .badge.extract-failed, .link .badge.idle-error { color: #d14343; }
 .meta.row { align-items: center; }
 .item { display: inline-flex; align-items: center; gap: 5px; }
@@ -354,12 +366,17 @@ onUnmounted(() => clearInterval(timer))
 .link .state { font-variant-numeric: tabular-nums; }
 .pbar { position: relative; height: 22px; border-radius: 11px; background: var(--border); overflow: hidden; }
 .pfill { position: absolute; inset: 0 auto 0 0; width: var(--p); background: var(--accent); transition: width 0.5s; }
-.link.finished .pfill, .link.extracted .pfill { background: var(--ok); }
-.link.extracting .pfill { width: 100%; background: var(--extract); }
-.link.extracting .pbar span { color: #1a1a1a; }
+.link.finished .pfill { background: var(--ok); }
+.link.extracting .pfill, .link.extracted .pfill { width: 100%; background: var(--extract); }
+.link.extracting .pbar span, .link.extracted .pbar span { color: #1a1a1a; }
 .link.extract-failed .pfill { background: #d14343; }
 .link:not(.running):not(.finished):not(.extracting):not(.extracted):not(.extract-failed) .pfill { background: var(--muted); }
 .pbar span { position: relative; display: block; text-align: center; line-height: 22px; font-size: 0.75rem; font-weight: 600; color: var(--text); mix-blend-mode: normal; }
+.stateicon { display: none; align-items: center; justify-content: center; color: var(--muted); }
+.stateicon.running { color: var(--accent); }
+.stateicon.finished { color: var(--ok); }
+.stateicon.extracting, .stateicon.extracted { color: var(--extract-text); }
+.stateicon.extract-failed, .stateicon.idle-error { color: #d14343; }
 @media (max-width: 720px) {
   .link { grid-template-columns: minmax(0, 1fr) 90px; }
   .link .size, .link .state { display: none; }
@@ -372,10 +389,11 @@ onUnmounted(() => clearInterval(timer))
   .bar { margin: 8px 0 6px; }
   .meta { gap: 2px 12px; }
   .links { margin-top: 6px; }
-  .link { grid-template-columns: minmax(0, 1fr) 64px; gap: 8px; min-height: 40px; padding: 2px 6px; }
+  .link { grid-template-columns: minmax(0, 1fr) 18px 64px; gap: 8px; min-height: 40px; padding: 2px 6px; }
   .link .main { flex-direction: row; align-items: center; gap: 8px; }
   .link .main .sub { order: -1; flex: none; min-height: 0; }
   .link .hostname { display: none; }
+  .link .stateicon { display: flex; }
   .link .sub .hosticon { width: 16px; height: 16px; margin: 0; vertical-align: middle; }
 }
 </style>
