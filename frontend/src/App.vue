@@ -22,11 +22,12 @@ import { progress, showError } from './toast'
 import AddLinksModal from './AddLinksModal.vue'
 import LinkgrabberView from './LinkgrabberView.vue'
 import CnlToggle from './CnlToggle.vue'
+import LoadingState from './LoadingState.vue'
 import NotifyToggle from './NotifyToggle.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import SettingsView from './SettingsView.vue'
 import { loadPlugins } from './plugins'
-import { SECTIONS, settingsSection } from './settings'
+import { phone, SECTIONS, settingsOpen, settingsSection } from './settings'
 import { notifyNewCaptchas } from './useNotifications'
 import { useCaptchas } from './useCaptchas'
 import { useGrabber } from './useGrabber'
@@ -78,9 +79,15 @@ watch(packages, (list) => {
 const tabFromHash = (): Tab => parseHash().tab
 const tab = ref<Tab>(tabFromHash())
 const devicesOpen = ref(false)
+// Coming back to the settings tab shows where you were; tapping it while you are on it goes up to the list (phone).
+const openSettings = () => {
+  if (phone.value && tab.value === 'settings') settingsOpen.value = false
+  tab.value = 'settings'
+}
 // The active tab and device live in the URL anchor so a reload (or a shared link) opens the same view.
-watch([tab, selected, settingsSection], () => {
-  const hash = formatHash(tab.value, selected.value, settingsSection.value)
+watch([tab, selected, settingsSection, settingsOpen, phone], () => {
+  // On a phone the settings list has no section in the anchor (see settings.ts).
+  const hash = formatHash(tab.value, selected.value, phone.value && !settingsOpen.value ? undefined : settingsSection.value)
   if (location.hash !== hash) location.hash = hash
 })
 // A click anywhere else (not on a link, a package header or the context menu) clears the marks.
@@ -105,6 +112,7 @@ onUnmounted(() => {
 const onHashChange = () => {
   const { tab: next, device, section } = parseHash()
   tab.value = next
+  if (next === 'settings') settingsOpen.value = Boolean(section)
   if (section && SECTIONS.some((s) => s.id === section)) settingsSection.value = section
   if (device !== undefined && device !== selected.value) select(device)
 }
@@ -220,7 +228,7 @@ const dragFor = (device: string) => {
       <button v-if="multiple" type="button" class="device-tab" :class="{ active: devicesOpen }" @click="devicesOpen = true">
         <span class="logo" aria-hidden="true" /><span class="label">Devices</span>
       </button>
-      <button type="button" :class="{ active: tab === 'settings' }" @click="tab = 'settings'"><Settings :size="16" /><span class="label">Settings</span></button>
+      <button type="button" :class="{ active: tab === 'settings' }" @click="openSettings"><Settings :size="16" /><span class="label">Settings</span></button>
     </nav>
     <CnlToggle />
     <NotifyToggle />
@@ -242,7 +250,7 @@ const dragFor = (device: string) => {
           <span v-else-if="s.packages.length" class="totals">{{ s.packages.length }} package{{ s.packages.length === 1 ? '' : 's' }} · {{ formatBytes(s.bytesLoaded) }} / {{ formatBytes(s.bytesTotal) }}<template v-if="s.speed > 0"> · {{ formatSpeed(s.speed) }}</template></span>
         </h2>
         <p v-if="s.device.online === false" class="empty">This device is offline.</p>
-        <p v-else-if="!s.loaded" class="empty">Loading…</p>
+        <LoadingState v-else-if="!s.loaded" variant="inline" text="Loading…" />
         <p v-else-if="!s.packages.length" class="empty">The download list is empty.</p>
         <PackageCard
           v-for="p in s.packages"
@@ -258,7 +266,7 @@ const dragFor = (device: string) => {
       </section>
     </template>
     <template v-else-if="tab === 'downloads'">
-      <p v-if="!snapshot" class="empty">Loading…</p>
+      <LoadingState v-if="!snapshot" variant="page" text="Loading downloads…" />
       <div v-else-if="packages.length === 0" class="empty-big">
         <Download :size="72" :stroke-width="1.25" />
         <p>The download list is empty</p>
@@ -399,6 +407,12 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid
 /* Phones: the tabs become a bottom bar within thumb reach; the status bar floats above it. */
 :root { --tabbar-h: 0px; }
 @media (max-width: 640px) {
+  /* Phone: a checkbox with a text becomes a row with a switch on the right (also in JdSettings, which has its own rows). */
+  label.check { flex-direction: row-reverse; justify-content: space-between; align-items: center !important; gap: 16px; }
+  label.check input[type='checkbox'] { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 46px; height: 28px; margin: 0 !important; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.15s; }
+  label.check input[type='checkbox']::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+  label.check input[type='checkbox']:checked { background: var(--accent); }
+  label.check input[type='checkbox']:checked::after { transform: translateX(18px); }
   :root { --tabbar-h: calc(60px + env(safe-area-inset-bottom)); }
   nav {
     position: fixed; inset: auto 0 0 0; z-index: 2; margin: 0; gap: 0; box-sizing: border-box;

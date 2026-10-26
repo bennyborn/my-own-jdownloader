@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import LoadingState from './LoadingState.vue'
 import { Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next'
 import { toneIcon } from './iconTone'
 import { settingsDevice } from './devices'
@@ -96,7 +97,7 @@ const remove = async (a: Account) => {
       </div>
     </form>
 
-    <p v-if="accountsState === 'loading' && !accounts.length" class="hint">Loading…</p>
+    <LoadingState v-if="accountsState === 'loading' && !accounts.length" text="Loading accounts…" />
     <p v-else-if="!accounts.length && !adding" class="hint">No accounts yet. Without one, hosters only work in their free mode.</p>
 
     <article v-for="a in accounts" :key="a.uuid" class="card account" :class="{ off: !a.enabled }">

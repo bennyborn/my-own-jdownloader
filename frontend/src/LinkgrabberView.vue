@@ -10,6 +10,7 @@ import { useDragReorder } from './dragReorder'
 import { expandedGrabber } from './expandedState'
 import { formatBytes } from './format'
 import PackageSlot from './PackageSlot.vue'
+import LoadingState from './LoadingState.vue'
 import { showError } from './toast'
 import { clearHovered, menuOn, movedTick, openMenu, setHovered, type Target } from './itemActions'
 import type { GrabberLink, GrabberState } from './types'
@@ -243,7 +244,7 @@ const removeSelected = async () => {
       <button v-if="filtersActive" type="button" class="clear" @click="clearFilters"><X :size="13" /> Clear filters</button>
     </div>
 
-    <p v-if="!state" class="muted">Loading…</p>
+    <LoadingState v-if="!state" variant="page" text="Loading the linkgrabber…" />
     <p v-else-if="!allLinks.length && !analysing && compact" class="muted">The linkgrabber is empty.</p>
     <div v-else-if="!allLinks.length && !analysing" class="empty">
       <Inbox :size="72" :stroke-width="1.25" />

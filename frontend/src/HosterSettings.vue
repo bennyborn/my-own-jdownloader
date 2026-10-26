@@ -5,6 +5,7 @@ import { toneIcon } from './iconTone'
 import { settingsDevice } from './devices'
 import { fetchPluginGroup, loadPluginConfigs, pluginConfigs, pluginConfigsError, pluginConfigsState, type ConfigGroup, type PluginConfig } from './jdconfig'
 import JdSettings from './JdSettings.vue'
+import LoadingState from './LoadingState.vue'
 import { showError } from './toast'
 
 watch(settingsDevice, () => {
@@ -51,7 +52,7 @@ const toggle = async (p: PluginConfig) => {
 
 <template>
   <p v-if="pluginConfigsState === 'error'" class="error">The hoster settings could not be loaded: {{ pluginConfigsError }}</p>
-  <p v-else-if="pluginConfigsState === 'loading' && !pluginConfigs.length" class="hint">Loading…</p>
+  <LoadingState v-else-if="pluginConfigsState === 'loading' && !pluginConfigs.length" text="Loading hoster settings…" />
   <template v-else>
     <p class="hint">The settings of the JDownloader's plugins, per site. Only plugins that have settings are listed.</p>
     <div class="filters">
@@ -74,7 +75,7 @@ const toggle = async (p: PluginConfig) => {
         <span class="count">{{ p.count }}</span>
       </button>
       <div v-if="open === idOf(p)" class="body">
-        <p v-if="loading && !group" class="hint">Loading…</p>
+        <LoadingState v-if="loading && !group" variant="inline" text="Loading…" />
         <JdSettings v-else-if="group" :key="idOf(p)" :groups="[group]" :title="p.host" />
       </div>
     </section>

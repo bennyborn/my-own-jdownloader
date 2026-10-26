@@ -37,3 +37,10 @@ const ALL_SECTIONS: SettingsSection[] = [
 export const SECTIONS = ALL_SECTIONS.filter((s) => s.scope !== 'app' || inApp)
 
 export const settingsSection = ref<string>(SECTIONS.find((s) => s.id === parseHash().section)?.id ?? SECTIONS[0].id)
+
+// On a phone the settings are a list first, and a section opens as a page of its own. The URL tells which: "#settings" is the
+// list, "#settings/downloads" the page (so the back button of the browser / the app goes from the page to the list).
+const phoneQuery = window.matchMedia('(max-width: 640px)')
+export const phone = ref(phoneQuery.matches)
+phoneQuery.addEventListener('change', (e) => (phone.value = e.matches))
+export const settingsOpen = ref(Boolean(parseHash().section))

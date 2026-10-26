@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Link2, RotateCcw, Search } from 'lucide-vue-next'
+import { ChevronDown, Link2, RotateCcw, Search } from 'lucide-vue-next'
 import { settingsDevice } from './devices'
+import { phone } from './settings'
 import { jdConfig, jdConfigError, jdConfigState, loadJdConfig, resetJdSetting, saveJdSetting, type ConfigEntry, type ConfigGroup } from './jdconfig'
 import { showError } from './toast'
 import ProxyListEditor from './ProxyListEditor.vue'
+import LoadingState from './LoadingState.vue'
 
 // Either a category of the core settings, or the groups to show (one plugin's settings).
 const props = defineProps<{ category?: string; title: string; groups?: ConfigGroup[] }>()
@@ -31,6 +33,15 @@ const idOf = (g: ConfigGroup, e: ConfigEntry) => `${g.interfaceName}\0${g.storag
 const isProxyList = (e: ConfigEntry) => e.key === 'CustomProxyList' && e.type === 'OBJECT_LIST'
 const isList = (e: ConfigEntry) => e.type === 'STRING_LIST' || e.type === 'INT_LIST'
 const isNumber = (e: ConfigEntry) => e.type === 'INT' || e.type === 'LONG' || e.type === 'DOUBLE'
+
+// Phone: the groups of a section fold (the first one is open); a filter opens them all. A group named like its section has no title.
+const titled = (g: ConfigGroup) => g.label.toLowerCase() !== props.title.toLowerCase()
+const keyOf = (g: ConfigGroup) => `${g.interfaceName}\0${g.storage ?? ''}`
+const toggled = reactive(new Map<string, boolean>())
+const isOpen = (g: ConfigGroup, index: number) => !phone.value || !titled(g) || query.value.trim() !== '' || (toggled.get(keyOf(g)) ?? index === 0)
+const toggle = (g: ConfigGroup, index: number) => toggled.set(keyOf(g), !isOpen(g, index))
+// Short values sit in the row of their name on a phone.
+const inline = (e: ConfigEntry) => (e.type === 'ENUM' || isNumber(e)) && !e.secret
 // Structured values, and any type this page does not know (a newer JDownloader): edited as raw JSON.
 const SIMPLE = ['BOOLEAN', 'ENUM', 'INT', 'LONG', 'DOUBLE', 'STRING', 'STRING_LIST', 'INT_LIST']
 const isJson = (e: ConfigEntry) => !SIMPLE.includes(e.type)
@@ -116,17 +127,23 @@ const reset = async (g: ConfigGroup, e: ConfigEntry) => {
 
 <template>
   <p v-if="!groups.length && !props.groups && jdConfigState === 'error'" class="error">The JDownloader's settings could not be loaded: {{ jdConfigError }}</p>
-  <p v-else-if="!props.groups && jdConfigState === 'loading' && !jdConfig.length" class="hint">Loading…</p>
+  <LoadingState v-else-if="!props.groups && jdConfigState === 'loading' && !jdConfig.length" text="Loading settings…" />
   <template v-else>
     <div class="search">
       <Search :size="16" />
       <input v-model="query" type="search" placeholder="Filter settings" aria-label="Filter settings" />
     </div>
     <p v-if="!shown.length" class="hint">No settings found.</p>
-    <section v-for="s in shown" :key="s.group.interfaceName + (s.group.storage ?? '')" class="group" :class="{ managed: s.group.note }">
+    <section v-for="(s, i) in shown" :key="s.group.interfaceName + (s.group.storage ?? '')" class="group" :class="{ managed: s.group.note }">
       <p v-if="s.group.note" class="managed-note"><Link2 :size="14" /> <span><strong>{{ s.group.noteTitle }}</strong> {{ s.group.note }}</span></p>
-      <h3 v-if="s.group.label.toLowerCase() !== title.toLowerCase()">{{ s.group.label }}</h3>
-      <div v-for="e in s.entries" :key="e.key" class="field" :class="{ changed: changed(e), bool: e.type === 'BOOLEAN' }">
+      <h3 v-if="titled(s.group)">
+        <button v-if="phone" type="button" class="gtoggle" :aria-expanded="isOpen(s.group, i)" @click="toggle(s.group, i)">
+          <ChevronDown :size="16" class="gchev" :class="{ shut: !isOpen(s.group, i) }" /><span class="gname">{{ s.group.label }}</span><span class="count">{{ s.entries.length }}</span>
+        </button>
+        <template v-else>{{ s.group.label }}</template>
+      </h3>
+      <template v-if="isOpen(s.group, i)">
+      <div v-for="e in s.entries" :key="e.key" class="field" :class="{ changed: changed(e), bool: e.type === 'BOOLEAN', inline: inline(e) }">
         <div class="line">
           <label :for="idOf(s.group, e)">{{ e.label }}</label>
           <button v-if="changed(e)" type="button" class="reset" :disabled="busy.has(idOf(s.group, e))" title="Reset to the default" aria-label="Reset to the default" @click="reset(s.group, e)"><RotateCcw :size="14" /></button>
@@ -143,6 +160,7 @@ const reset = async (g: ConfigGroup, e: ConfigEntry) => {
         <input v-else :id="idOf(s.group, e)" type="text" :inputmode="isNumber(e) ? 'numeric' : undefined" :value="shownText(s.group, e)" @input="drafts[idOf(s.group, e)] = ($event.target as HTMLInputElement).value" @keydown.enter="($event.target as HTMLInputElement).blur()" @blur="commitText(s.group, e)" />
         <small v-if="e.docs" class="dim">{{ e.docs }}</small>
       </div>
+      </template>
     </section>
   </template>
 </template>
@@ -176,4 +194,31 @@ input[type='checkbox'] { justify-self: start; }
 .reset { display: inline-flex; padding: 3px; background: none; border: 0; border-radius: 4px; color: var(--muted); cursor: pointer; }
 .reset:hover { color: var(--text); background: var(--hover); }
 .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Phone: no cards, folding groups, rows with the value (or the switch) on the right. */
+@media (max-width: 640px) {
+  .group { gap: 0; margin-bottom: 4px; padding: 0; background: none; border: 0; border-radius: 0; }
+  .group.managed { box-shadow: none; }
+  .managed-note { margin-bottom: 8px; }
+  h3 { border-top: 1px solid var(--border); }
+  .gtoggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 0; background: none; border: 0; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+  .gname { flex: 1; min-width: 0; }
+  .gtoggle .count { flex: none; font-weight: 400; } /* the green count box of the app (App.vue) */
+  .gchev { flex: none; color: var(--muted); transition: transform 0.15s; }
+  .gchev.shut { transform: rotate(-90deg); }
+  .field { gap: 6px; padding: 12px 0; border-top: 1px solid var(--border); }
+  .field:first-of-type { border-top: 0; }
+  .field.inline { grid-template-columns: minmax(0, 1fr) minmax(96px, 42%); align-items: center; column-gap: 12px; }
+  .field.inline > .line { grid-area: 1 / 1; }
+  .field.inline > input, .field.inline > select { grid-area: 1 / 2; }
+  .field.inline > small { grid-area: 2 / 1 / 3 / 3; }
+  /* The checkbox is a switch on the right, label and hint on the left. */
+  .field.bool { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
+  .field.bool > input { grid-area: 1 / 2; appearance: none; -webkit-appearance: none; position: relative; width: 46px; height: 28px; border-radius: 14px; background: var(--border); cursor: pointer; transition: background 0.15s; }
+  .field.bool > input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+  .field.bool > input:checked { background: var(--accent); }
+  .field.bool > input:checked::after { transform: translateX(18px); }
+  .field.bool > input:disabled { opacity: 0.5; }
+  .field.bool > .line { grid-area: 1 / 1; }
+  .field.bool > small { grid-column: 1; }
+}
 </style>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronRight, HardDrive, Monitor, ServerOff, Smartphone } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { ChevronLeft, ChevronRight, HardDrive, Monitor, ServerOff, Smartphone } from 'lucide-vue-next'
 import { deviceName, devices, pickSettingsDevice, settingsDevice, showingAll } from './devices'
-import { SECTIONS, settingsSection, type SettingsSection } from './settings'
+import { phone, SECTIONS, settingsOpen, settingsSection, type SettingsSection } from './settings'
 import AccountSettings from './AccountSettings.vue'
 import AppCaptchaSettings from './AppCaptchaSettings.vue'
 import AppLinksSettings from './AppLinksSettings.vue'
@@ -20,6 +20,34 @@ const appSections = SECTIONS.filter((s) => s.scope === 'app')
 const jdSections = SECTIONS.filter((s) => s.scope === 'jd')
 const name = computed(() => deviceName(settingsDevice.value))
 
+// Phone: the list of sections, grouped like the sidebar of the desktop.
+const groups = computed(() =>
+  [
+    { id: 'app', label: 'App', icon: Smartphone, sections: appSections },
+    { id: 'ui', label: 'This interface', icon: Monitor, sections: uiSections },
+    { id: 'jd', label: 'JDownloader', icon: HardDrive, sections: jdSections }
+  ].filter((g) => g.sections.length)
+)
+// Opening a section adds a history entry, so "back" (the browser's, the app's) returns to the list. A page opened directly by its
+// link has no list behind it: the back arrow then just shows the list.
+let cameFromList = false
+const openSection = (s: SettingsSection) => {
+  settingsSection.value = s.id
+  settingsOpen.value = true
+  cameFromList = true
+}
+const back = () => {
+  if (cameFromList) {
+    cameFromList = false
+    history.back()
+  } else settingsOpen.value = false
+}
+// Which way the page slides: into a section from the right, back to the list from the left. Set before the page changes
+// (also by the back button, which only changes the anchor), none when the page was just opened.
+const slide = ref<'' | 'slide-in' | 'slide-out'>('')
+watch(settingsOpen, (open) => (slide.value = open ? 'slide-in' : 'slide-out'), { flush: 'sync' })
+watch(settingsOpen, () => window.scrollTo(0, 0))
+
 // In the overview of all devices every device gets its own block; only the one in use is unfolded.
 const open = (deviceId: string, s: SettingsSection) => {
   pickSettingsDevice(deviceId)
@@ -32,8 +60,8 @@ const fold = (deviceId: string) => {
 </script>
 
 <template>
-  <div class="settings">
-    <div class="sidebar" role="navigation" aria-label="Settings sections">
+  <div class="settings" :class="[{ phone }, phone ? slide : '']">
+    <div v-if="!phone" class="sidebar" role="navigation" aria-label="Settings sections">
       <template v-if="appSections.length">
         <h2 class="app"><Smartphone :size="13" /> App</h2>
         <button v-for="s in appSections" :key="s.id" type="button" class="app" :class="{ active: settingsSection === s.id }" @click="settingsSection = s.id">
@@ -67,7 +95,25 @@ const fold = (deviceId: string) => {
         </button>
       </template>
     </div>
-    <section class="content">
+    <div v-else-if="!settingsOpen" class="menu" role="navigation" aria-label="Settings sections">
+      <template v-for="g in groups" :key="g.id">
+        <h2 class="group" :class="g.id">
+          <component :is="g.icon" :size="13" /> {{ g.label }}<span v-if="g.id === 'jd' && !showingAll && name" class="device">{{ name }}</span>
+        </h2>
+        <select v-if="g.id === 'jd' && showingAll" class="devpick" aria-label="Device" :value="settingsDevice" @change="pickSettingsDevice(($event.target as HTMLSelectElement).value)">
+          <option v-for="d in devices" :key="d.id" :value="d.id" :disabled="d.online === false">{{ d.name }}{{ d.online === false ? ' (offline)' : '' }}</option>
+        </select>
+        <ul class="rows">
+          <li v-for="s in g.sections" :key="s.id">
+            <button type="button" class="row" @click="openSection(s)">
+              <component :is="s.icon" :size="18" /><span class="label">{{ s.label }}</span><ChevronRight :size="16" class="go" />
+            </button>
+          </li>
+        </ul>
+      </template>
+    </div>
+    <section v-if="!phone || settingsOpen" class="content">
+      <button v-if="phone" type="button" class="back" @click="back"><ChevronLeft :size="18" /> Settings</button>
       <p class="scope" :class="current.scope">
         <template v-if="current.scope === 'jd'">
           <HardDrive :size="14" /> Stored on the JDownloader<template v-if="name"> “{{ name }}”</template>: changes apply at once and to every client of it.
@@ -114,7 +160,8 @@ const fold = (deviceId: string) => {
 .chevron { flex: none; color: var(--muted); transition: transform 0.15s; }
 .unfolded .chevron { transform: rotate(90deg); }
 .sidebar button.nested { margin-left: 14px; }
-.scope { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4; }
+.scope { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4; }
+.scope svg { flex: none; margin-top: 2px; }
 .scope.jd { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .scope.ui, .scope.app { color: var(--muted); background: var(--card); border: 1px solid var(--border); }
 .sub-enter-active, .sub-leave-active { transition: opacity 0.12s ease, transform 0.12s ease; }
@@ -134,4 +181,28 @@ const fold = (deviceId: string) => {
   .dev .devhead { flex-basis: 100%; border: 0; border-radius: 8px; padding: 6px 4px; }
   .sidebar button.nested { margin-left: 0; }
 }
+/* Phone: list of sections, then a page per section. */
+.settings.phone { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.menu { display: grid; gap: 8px; }
+.group { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 14px 4px 0; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.group:first-child { margin-top: 0; }
+.group.jd { color: var(--accent); }
+.group .device { flex-basis: 100%; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+.devpick { padding: 10px 12px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+.rows { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.rows li + li { border-top: 1px solid var(--border); }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px; background: none; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.row:active { background: var(--hover); }
+.row .label { flex: 1; }
+.row svg { flex: none; color: var(--muted); }
+.phone .content { display: flex; flex-direction: column; }
+.back { align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; margin: -6px 0 6px -8px; padding: 8px 12px 8px 4px; background: none; border: 0; border-radius: 8px; color: var(--accent); font: inherit; cursor: pointer; }
+.phone .title { order: 1; margin: 0 0 4px; font-size: 1.3rem; }
+.phone .scope { order: 2; margin: 4px 0 16px; }
+.phone .content > div { order: 3; }
+@keyframes slide-in { from { opacity: 0; transform: translateX(28px); } }
+@keyframes slide-out { from { opacity: 0; transform: translateX(-28px); } }
+.phone.slide-in > .content, .phone.slide-in > .menu { animation: slide-in 0.2s ease-out; }
+.phone.slide-out > .content, .phone.slide-out > .menu { animation: slide-out 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .phone > .content, .phone > .menu { animation: none !important; } }
 </style>
