@@ -237,19 +237,24 @@ und dann nur in einem abgeschotteten Netz.
   - Container, UI-Login (`UI_PASSWORD`).
   - Einstellungen, Konten, mehrere Geräte, Plugins, MCP (siehe oben).
   - Mobilansicht und Android-App (siehe oben), MyJD-API schonen (siehe oben).
+  - Header: Start / Pause / Stop für das ganze JD (nur bei einem gewählten Gerät, nicht in "All devices"; Start und Stop mit
+    Rückfrage), dazu ein dritter Button bei verfügbarem Update (Rückfrage, startet JD neu). Am Handy ganz links, am Desktop
+    in der Mitte. In der Pause: Schnecke hinter der Geschwindigkeit, gestrichelte Limit-Linie im Graphen (Pause-Speed, sonst
+    das Speed-Limit, wenn eingeschaltet), das Limit liegt bei halber Höhe. Die Geräteauswahl zeigt, für welches Gerät ein Update bereitliegt.
+  - Captcha-Overlay: ohne unsere Browser-Erweiterung (Marker `data-myjd-extension` an `<html>`) kein "Open solver page", dafür ein Hinweis.
 - **Offen:** der Meilenstein Direktverbindung, die Lücken unter TODO und die Nutzer-Doku (Phase 6).
 
 ## TODO
 
 - Gaps against MyJDownloader, derived from the JD settings (the generic Settings > JDownloader page already covers every
-  plain value; these need their own UI because the value is a table, a list of rules or an action). Accounts, per-plugin
-  settings and multiple devices are done:
+  plain value; these need their own UI because the value is a table, a list of rules or an action). Accounts, custom proxies, per-plugin
+  settings, multiple devices, start / pause / stop and the update button are done:
   - Rule editors (today only raw JSON): link filter (`LinkFilterSettings.FilterList`), packagizer (`PackagizerSettings.RuleList`),
     hoster rules (`HosterRuleConfig.Rules`; they need the accounts, which exist now), filename / package name replace maps (`FilenameReplaceMap`, `PackagenameReplaceMap`,
-    `FilenameTooLongRegexReplaceMap`), domain rules (`DomainRules`), custom proxies (`InternetConnectionSettings.CustomProxyList`).
+    `FilenameTooLongRegexReplaceMap`), domain rules (`DomainRules`).
   - Plugin blacklists (`CrawlerHostPluginBlacklist`, `CrawlerCrawlerPluginBlacklist`) as a picker (the per-plugin settings pages exist).
   - Quick controls in the status bar instead of a trip to the settings: speed limit on/off and value (`DownloadSpeedLimit*`),
-    max. simultaneous downloads, pause with its speed (`PauseSpeed`), silent mode (`SilentModeSettings.ManualEnabled`),
+    max. simultaneous downloads, the pause speed (`PauseSpeed`; only shown so far, as snail and line in the graph), silent mode (`SilentModeSettings.ManualEnabled`),
     free disk space (`ForcedFreeSpaceOnDisk`, storage infos).
   - Linkgrabber toolbar: toggles for auto confirm / auto start (`LinkgrabberAutoConfirmEnabled`, `LinkgrabberAutoStartEnabled`),
     quick filters by hoster and file type (`LinkFilterSettings.*Quickfilter*`), handling of offline, duplicate and incomplete archive
@@ -260,7 +265,8 @@ und dann nur in einem abgeschotteten Netz.
     (LiveHeader scripts, UPnP).
   - Extraction: password list editor (`ExtractionConfig.PasswordList`, one per line works today), the blacklist patterns, and
     something for the dialogs JD would show (unknown archive password, file exists); check whether the API can answer JD dialogs.
-  - Updates: show whether one is available and run it (`/update/*`), JD version in the settings header.
+  - Updates: JD version in the settings header, "Check for updates now" (`/update/runUpdateCheck`; today only JD's own last result
+    is shown).
   - Settings page itself: readable German/English labels and units for the important keys (many values are milliseconds or
     bytes), "restart needed" hints, a filter "only changed", expert settings folded away, export/import of the JD config.
   - Unknown to check against the original: whether MyJDownloader offers anything beyond this (e.g. log upload, scheduler,
@@ -271,11 +277,6 @@ und dann nur in einem abgeschotteten Netz.
   reverse proxy with a certificate. The extension's and the Android app's notifications work everywhere. Without https a browser
   also cannot install the UI as an app (no PWA install); the Android app replaces that.
 - Browser extension: Firefox manifest (`background.scripts` instead of `service_worker`); revise the design of the captcha page.
-- Captcha overlay: check whether our browser extension is active in the current browser. If not, the "Solve" button for
-  token captchas (Turnstile, hCaptcha, reCAPTCHA) makes no sense; hide it and show an error ("browser extension not
-  installed / not active") instead. Idea: the extension's content script announces itself on the web UI page (e.g. a
-  `postMessage` or a marker attribute on `<html>`), the overlay checks for it. The Android app announces itself with
-  `window.Android` (`frontend/src/appBridge.ts`), the same check could cover both.
 - Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
 - Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
 - Mobile follow-ups: expert settings behind a "Show advanced" switch (JD's "General" page has 75 entries; needs a rule for what counts
@@ -297,5 +298,8 @@ und dann nur in einem abgeschotteten Netz.
   - [x] Interleave hosters
   - [x] Start download (force start, enabling the item first)
   - [x] Image captcha dialog: solve, skip variants, refresh, the countdown
+  - [x] Start / stop / start again on a test device (the state name `stopped_state` is cut to `stopped`)
+  - [ ] Pause and resume (the state name for "paused" is assumed to be `pause`), snail and limit line
+  - [ ] Install an update (`/update/restartAndUpdate` is untested; only the check `isUpdateAvailable` was seen working)
   - [ ] Web UI notifications over https
   - [ ] Set `UI_PASSWORD` and check logo, manifest, icons and the Anti-Captcha endpoints still work

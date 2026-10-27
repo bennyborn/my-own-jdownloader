@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Check, ChevronDown, Layers, Server, ServerOff } from 'lucide-vue-next'
+import { ArrowUpCircle, Check, ChevronDown, Layers, Server, ServerOff } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ALL, devices } from './devices'
+import { ALL, anyUpdate, devices, updates } from './devices'
 
 // Graphical device dropdown (header: with the "All devices" overview; add dialog: full width, offline devices disabled).
 const props = defineProps<{ modelValue: string; withAll?: boolean; block?: boolean; disableOffline?: boolean }>()
@@ -32,6 +32,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
       <ServerOff v-else-if="current?.online === false" :size="16" class="off" />
       <Server v-else :size="16" :class="{ on: current?.online }" />
       <span class="name">{{ label }}</span>
+      <span v-if="anyUpdate" class="update-dot" title="A JDownloader update is available" />
       <ChevronDown :size="14" class="chevron" />
     </button>
     <ul v-if="open" class="menu" role="listbox">
@@ -47,6 +48,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
         <ServerOff v-if="d.online === false" :size="16" class="off" />
         <Server v-else :size="16" :class="{ on: d.online }" />
         <span class="label">{{ d.name }}</span>
+        <ArrowUpCircle v-if="updates[d.id]" :size="14" class="update" />
         <span v-if="d.online === false" class="state">offline</span>
         <Check v-else-if="!showingAll && d.id === modelValue" :size="14" />
       </li>
@@ -69,6 +71,8 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 .trigger:hover { background: var(--hover); }
 .trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trigger .name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.update { flex: none; color: var(--extract); }
+.update-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--extract); }
 .on { color: var(--ok); }
 .off { color: var(--muted); }
 .menu { position: absolute; z-index: 50; top: calc(100% + 6px); right: 0; min-width: 220px; margin: 0; padding: 4px; list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }

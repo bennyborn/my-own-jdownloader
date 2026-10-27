@@ -97,12 +97,35 @@ export const loadDevices = async () => {
   }
 }
 
+// Devices with an update waiting (JD finds updates by itself; we only look now and then, the backend keeps the answer a minute).
+export const updates = ref<Record<string, boolean>>({})
+export const anyUpdate = computed(() => Object.values(updates.value).some(Boolean))
+export const loadUpdates = async () => {
+  await Promise.all(
+    devices.value
+      .filter((d) => d.online !== false)
+      .map(async (d) => {
+        try {
+          const res = await fetch(withDevice('/api/update', d.id))
+          if (res.ok) updates.value = { ...updates.value, [d.id]: (await res.json()).available === true }
+        } catch {
+          /* the old answer stays */
+        }
+      })
+  )
+}
+
 // Keeps the device list (and with it the online state) up to date.
 export const useDevices = () => {
   let timer: ReturnType<typeof setInterval> | undefined
+  let updateTimer: ReturnType<typeof setInterval> | undefined
   onMounted(() => {
-    void loadDevices()
+    void loadDevices().then(loadUpdates)
     timer = setInterval(loadDevices, 5000)
+    updateTimer = setInterval(() => !document.hidden && loadUpdates(), 10 * 60_000)
   })
-  onUnmounted(() => clearInterval(timer))
+  onUnmounted(() => {
+    clearInterval(timer)
+    clearInterval(updateTimer)
+  })
 }

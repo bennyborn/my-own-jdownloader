@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inApp, solveInApp } from './appBridge'
 import { withDevice } from './devices'
-import { Clock, Download, Link2, Package, Plus, ShieldCheck } from 'lucide-vue-next'
+import { Clock, Download, Link2, Package, Plus, ShieldCheck, Snail } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
 import SpeedGraph, { type SpeedSample } from './SpeedGraph.vue'
@@ -69,6 +69,27 @@ watch(
   }
 )
 
+// The limit JD works under: the pause speed while paused, else the speed limit if one is switched on (0: none).
+// Settings of the device, read when the device or the pause changes and now and then in case somebody changed them.
+const paused = computed(() => !!props.device && props.snapshot?.state === 'pause')
+const jdLimits = ref({ pauseSpeed: 0, speedLimit: 0 })
+const limit = computed(() => (paused.value ? jdLimits.value.pauseSpeed : jdLimits.value.speedLimit))
+const loadLimits = async () => {
+  const device = props.device
+  if (!device) return
+  try {
+    const res = await fetch(withDevice('/api/jd-settings', device))
+    const jd = res.ok ? await res.json() : null
+    if (device === props.device && jd) jdLimits.value = { pauseSpeed: Number(jd.pauseSpeed) || 0, speedLimit: Number(jd.speedLimit) || 0 }
+  } catch {
+    /* the graph then scales on its own */
+  }
+}
+watch(() => [props.device, paused.value], () => { jdLimits.value = { pauseSpeed: 0, speedLimit: 0 }; void loadLimits() }, { immediate: true })
+let limitTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => (limitTimer = setInterval(() => !document.hidden && loadLimits(), 60_000)))
+onUnmounted(() => clearInterval(limitTimer))
+
 const totals = computed(() => {
   const packages = props.snapshot?.packages ?? []
   const total = packages.reduce((sum, p) => sum + p.bytesTotal, 0)
@@ -82,7 +103,7 @@ const totals = computed(() => {
 <template>
   <div class="fade" aria-hidden="true" />
   <footer ref="bar" class="statusbar">
-    <SpeedGraph :samples="samples" :window-seconds="WINDOW_SECONDS" />
+    <SpeedGraph :samples="samples" :window-seconds="WINDOW_SECONDS" :limit="limit" />
     <button type="button" class="fab" title="Add links" aria-label="Add links" @click="$emit('addLinks')"><Plus :size="24" /></button>
     <div class="content">
       <button type="button" class="add" @click="$emit('addLinks')"><Plus :size="15" /> Add links</button>
@@ -103,6 +124,7 @@ const totals = computed(() => {
           <dt>Speed</dt>
           <dd>
             {{ formatSpeed(totals.speed) }}
+            <span v-if="paused" class="snail" :title="`Paused: JDownloader is limited to ${formatSpeed(limit)}`"><Snail :size="15" /></span>
             <span class="dim eta" title="Finished in"><Clock :size="13" />{{ formatLongEta(totals.eta) }}</span>
           </dd>
         </div>
@@ -143,6 +165,7 @@ dl { display: flex; flex: 1; gap: 28px; margin: 0; white-space: nowrap; }
 dl div { display: flex; flex-direction: column; }
 dt { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
 dd { display: flex; align-items: center; gap: 10px; margin: 0; font-variant-numeric: tabular-nums; }
+.snail { display: inline-flex; color: var(--muted); }
 .icons span { display: inline-flex; align-items: center; gap: 4px; }
 .icons svg { color: var(--muted); }
 .solve { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 8px 12px; background: #d14343; color: #fff; border-radius: 6px; text-decoration: none; white-space: nowrap; animation: pulse 2s ease-in-out infinite; }

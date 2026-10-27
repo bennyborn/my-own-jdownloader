@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Clock, ShieldCheck } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { inApp, solveInApp } from './appBridge'
+import { extensionActive, inApp, solveInApp } from './appBridge'
 import { formatCountdown } from './format'
 import type { CaptchaJob } from './useCaptchas'
 
@@ -20,6 +20,7 @@ const open = (e: Event) => {
   }
   if (props.job) emit('dismiss', props.job.id)
 }
+const missing = computed(() => !!props.job && !extensionActive())
 const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value - props.job.fetchedAt) : 0))
 </script>
 
@@ -31,9 +32,10 @@ const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value
         <span class="left" :class="{ low: remainingMs < 60000 }" title="Time left to answer"><Clock :size="15" />{{ formatCountdown(remainingMs) }}</span>
       </h3>
       <p><strong>{{ job.hoster }}</strong> needs a captcha that is solved on the hoster's page with {{ inApp ? 'this app' : 'the browser extension' }}. You can open it later with the red button in the status bar.</p>
+      <p v-if="missing" class="error">The browser extension is not installed or not active in this browser, so the captcha cannot be solved here. Install or enable it, then reload this page.</p>
       <div class="actions">
         <button type="button" @click="emit('dismiss', job.id)">Later</button>
-        <a class="primary" :href="job.openUrl" target="_blank" rel="noopener" @click="open">Open solver page</a>
+        <a v-if="!missing" class="primary" :href="job.openUrl" target="_blank" rel="noopener" @click="open">Open solver page</a>
       </div>
     </div>
   </div>
@@ -45,6 +47,7 @@ const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value
 h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
 h3 svg { color: #d14343; }
 p { margin: 0; color: var(--muted); line-height: 1.5; }
+p.error { color: #d14343; }
 p strong { color: var(--text); font-weight: 600; }
 .left { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--muted); font-size: 0.85rem; font-weight: 400; letter-spacing: normal; font-variant-numeric: tabular-nums; }
 .left.low { color: #d14343; }

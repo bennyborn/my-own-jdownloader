@@ -37,3 +37,6 @@ export const androidBridge = (window as unknown as { Android?: AndroidBridge }).
 export const inApp = androidBridge !== undefined
 
 export const solveInApp = (job: { id: number; device: string }) => androidBridge?.solve(String(job.id), job.device)
+
+// Our browser extension marks every page it runs on, so the interface can tell whether a solver page can be solved here.
+export const extensionActive = () => inApp || document.documentElement.hasAttribute('data-myjd-extension')

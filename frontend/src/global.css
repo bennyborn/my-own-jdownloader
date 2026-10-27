@@ -64,9 +64,10 @@ header {
   padding: 16px;
   border-bottom: 1px solid var(--border);
 }
-h1 { margin: 0; font-size: 1.2rem; }
 header { padding: 14px 16px; align-items: center; }
-nav { display: flex; gap: 4px; margin-right: auto; margin-left: 16px; }
+nav { display: flex; flex: 1 1 0; gap: 4px; margin-left: 16px; }
+/* Tabs left, start / stop in the middle, bell and co right: the two outer parts take equal room. */
+.header-tools { display: flex; flex: 1 1 0; align-items: center; justify-content: flex-end; gap: 16px; }
 nav button {
   display: inline-flex;
   align-items: center;
@@ -115,7 +116,8 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 16px 190px; display: grid
   .header-picker { display: none; }
   nav .device-tab { display: flex; }
   .logo { width: 16px; height: 16px; background: currentColor; mask: url(/logo-outline.svg) center / contain no-repeat; }
-  h1 { margin-right: auto; }
+  nav { flex: none; margin-left: 0; }
+  .header-tools { flex: 1 1 auto; gap: 8px; } /* start / stop flush left, the rest right */
   header { flex-wrap: nowrap; gap: 8px; }
   /* Room for the floating status bar (24px above the tab bar), and below the last package the same gap as above the first one (28px). */
   main { padding-bottom: calc(var(--tabbar-h) + 24px + var(--statusbar-h, 100px) + 28px + var(--sheet-h, 0px)); }

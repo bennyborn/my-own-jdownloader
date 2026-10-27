@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import DownloadControls from './DownloadControls.vue'
 import DevicePicker from './DevicePicker.vue'
 import DeviceDialog from './DeviceDialog.vue'
 import { ALL, currentDevice, devices, formatHash, multiple, parseHash, select, selected, showingAll, useDevices, withDevice, type Tab } from './devices'
@@ -60,7 +61,8 @@ const statusSnapshot = computed(() => {
     packages: online.flatMap((s) => s.packages),
     totalSpeed: online.reduce((sum, s) => sum + s.totalSpeed, 0),
     linkCount: online.reduce((sum, s) => sum + s.linkCount, 0),
-    runningDownloads: online.reduce((sum, s) => sum + s.runningDownloads, 0)
+    runningDownloads: online.reduce((sum, s) => sum + s.runningDownloads, 0),
+    state: ''
   }
 })
 // Drop marks of packages that no longer exist (e.g. after a merge). Only packages this list knew before are
@@ -219,7 +221,6 @@ const dragFor = (device: string) => {
 
 <template>
   <header>
-    <h1>My Own JDownloader</h1>
     <nav>
       <button type="button" :class="{ active: tab === 'downloads' }" @click="tab = 'downloads'"><Download :size="16" /><span class="label">Downloads</span></button>
       <button type="button" :class="{ active: tab === 'grabber' }" @click="tab = 'grabber'">
@@ -230,10 +231,13 @@ const dragFor = (device: string) => {
       </button>
       <button type="button" :class="{ active: tab === 'settings' }" @click="openSettings"><Settings :size="16" /><span class="label">Settings</span></button>
     </nav>
+    <DownloadControls v-if="!showingAll" :snapshots="snapshots" :targets="[currentDevice]" />
+    <div class="header-tools">
     <CnlToggle />
     <NotifyToggle />
     <DevicePicker v-if="multiple" class="header-picker" :model-value="showingAll ? ALL : currentDevice" with-all @update:model-value="select" />
     <ThemeToggle />
+    </div>
   </header>
   <DeviceDialog v-model="devicesOpen" />
 

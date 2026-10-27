@@ -37,6 +37,8 @@ export interface DownloadsSnapshot {
   totalSpeed: number
   linkCount: number
   runningDownloads: number
+  // The download controller of the device: running, paused, stopping, stopped or idle (not started). Empty if unknown.
+  state: string
 }
 
 export interface DownloadLink {
@@ -61,7 +63,7 @@ type Listener = (snapshot: DownloadsSnapshot) => void
 
 // Polls the device only while at least one listener is subscribed (read-only).
 export class DownloadsPoller {
-  private snapshot: DownloadsSnapshot = { updatedAt: 0, packages: [], totalSpeed: 0, linkCount: 0, runningDownloads: 0 }
+  private snapshot: DownloadsSnapshot = { updatedAt: 0, packages: [], totalSpeed: 0, linkCount: 0, runningDownloads: 0, state: '' }
   private listeners = new Set<Listener>()
   private timer?: NodeJS.Timeout
   private polling = false
@@ -126,6 +128,24 @@ export class DownloadsPoller {
     } catch {
       return -1
     }
+  }
+
+  // Read-only: state of the download controller, lower case ('running', 'pause', 'stopping', 'stopped', 'idle'; a trailing _STATE is dropped); '' if unknown.
+  private async getState(): Promise<string> {
+    try {
+      const state = await this.client.callDevice<unknown>(this.deviceId, '/downloadcontroller/getCurrentState', [])
+      return typeof state === 'string' ? state.toLowerCase().replace(/_state$/, '') : '' // JD says e.g. STOPPED_STATE
+    } catch {
+      return ''
+    }
+  }
+
+  // Start, pause (true / false) or stop all downloads of the device, then look again so the answer to the client is true.
+  async control(action: 'start' | 'pause' | 'resume' | 'stop'): Promise<DownloadsSnapshot> {
+    if (action === 'start') await this.client.callDevice(this.deviceId, '/downloadcontroller/start', [])
+    else if (action === 'stop') await this.client.callDevice(this.deviceId, '/downloadcontroller/stop', [])
+    else await this.client.callDevice(this.deviceId, '/downloadcontroller/pause', [action === 'pause'])
+    return this.refresh()
   }
 
   // Read-only: links (parts) of a single package.
@@ -207,7 +227,7 @@ export class DownloadsPoller {
     this.polling = true
     const epoch = this.client.epoch(this.deviceId)
     try {
-      const stopMark = await this.getStopMark()
+      const [stopMark, state] = await Promise.all([this.getStopMark(), this.getState()])
       const raw = await this.client.callDevice<Partial<DownloadPackage>[]>(
         this.deviceId,
         '/downloadsV2/queryPackages',
@@ -267,7 +287,8 @@ export class DownloadsPoller {
         packages,
         totalSpeed: packages.reduce((sum, p) => sum + p.speed, 0),
         linkCount: links.length,
-        runningDownloads: links.filter((l) => l.running).length
+        runningDownloads: links.filter((l) => l.running).length,
+        state
       }
       for (const listener of this.listeners) listener(this.snapshot)
     } catch (error) {

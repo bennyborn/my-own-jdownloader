@@ -20,6 +20,7 @@ const READ_TTL_MS: Record<string, number> = {
   '/downloadsV2/queryPackages': 1000,
   '/downloadsV2/queryLinks': 1500,
   '/downloadsV2/getStopMark': 3000,
+  '/downloadcontroller/getCurrentState': 1000,
   '/linkgrabberv2/queryPackages': 1500,
   '/linkgrabberv2/queryLinks': 1500,
   '/linkgrabberv2/isCollecting': 1500,
@@ -27,7 +28,8 @@ const READ_TTL_MS: Record<string, number> = {
   '/captcha/list': 2000,
   '/config/list': 30_000,
   '/accountsV2/listAccounts': 10_000,
-  '/accountsV2/listPremiumHoster': 60_000
+  '/accountsV2/listPremiumHoster': 60_000,
+  '/update/isUpdateAvailable': 60_000
 }
 // Reads that are not kept but do not change anything either. Every other action may change something: it drops the memory.
 const NEUTRAL = /\/(getSpeedInBps|getDownloadUrls|getVariants|getArchiveInfo|getArchiveSettings)$|^\/captcha\/get$/

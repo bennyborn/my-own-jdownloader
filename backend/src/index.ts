@@ -356,6 +356,12 @@ app.post<{ Body: { linkIds?: unknown; packageIds?: unknown } }>('/api/downloads/
   return { ok: true }
 })
 
+app.post<{ Body: { action?: unknown } }>('/api/downloads/control', async (request, reply) => {
+  const action = request.body?.action
+  if (action !== 'start' && action !== 'pause' && action !== 'resume' && action !== 'stop') return reply.code(400).send({ error: 'Invalid request' })
+  return dev(request).poller.control(action)
+})
+
 app.post<{ Body: { linkId?: unknown; packageId?: unknown } }>('/api/downloads/stop-mark', async (request, reply) => {
   const { linkId, packageId } = request.body ?? {}
   const valid = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0
@@ -376,6 +382,11 @@ app.post<{ Body: { linkIds?: unknown; packageIds?: unknown } }>('/api/downloads/
   // Without the extraction extension there is nothing to offer for archives (hides the entries of the context menu).
   if (!(await dev(request).config.settings()).extractionEnabled) return []
   return dev(request).listOps.downloads.getArchives(linkIds, packageIds)
+})
+app.get('/api/update', async (request) => ({ available: await dev(request).config.updateAvailable() }))
+app.post('/api/update/install', async (request) => {
+  await dev(request).config.installUpdate()
+  return { ok: true }
 })
 app.get('/api/jd-settings', async (request) => dev(request).config.settings())
 

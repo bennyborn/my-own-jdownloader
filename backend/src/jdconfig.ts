@@ -51,8 +51,12 @@ export interface JdSettings {
   autoExtract: boolean
   overwritePackagizerRules: boolean
   defaultFolder: string | null
+  // Bytes per second JD is limited to while paused.
+  pauseSpeed: number
+  // Bytes per second of the speed limit; 0 when the limit is off.
+  speedLimit: number
 }
-const DEFAULT_SETTINGS: JdSettings = { extractionEnabled: true, packagizerEnabled: true, autostart: false, autoExtract: false, overwritePackagizerRules: true, defaultFolder: null }
+const DEFAULT_SETTINGS: JdSettings = { extractionEnabled: true, packagizerEnabled: true, autostart: false, autoExtract: false, overwritePackagizerRules: true, defaultFolder: null, pauseSpeed: 10240, speedLimit: 0 }
 
 // Category -> the interfaces (matched by the end of their name) that belong to it. The ids are used by the
 // frontend's sidebar. Interfaces that match nothing (plugins, the desktop GUI) are not shown.
@@ -228,14 +232,32 @@ export class JdConfig {
       return typeof v === 'boolean' ? v : fallback
     }
     const folder = value('GeneralSettings', 'DefaultDownloadFolder')
+    const pauseSpeed = value('GeneralSettings', 'PauseSpeed')
+    const speedLimit = value('GeneralSettings', 'DownloadSpeedLimit')
     return {
       extractionEnabled: bool('Extension', 'EnableExtractionExtension', DEFAULT_SETTINGS.extractionEnabled),
       packagizerEnabled: bool('PackagizerSettings', 'PackagizerEnabled', DEFAULT_SETTINGS.packagizerEnabled),
       autostart: bool('LinkgrabberSettings', 'LinkgrabberAutoStartEnabled', DEFAULT_SETTINGS.autostart),
       autoExtract: bool('LinkgrabberSettings', 'AutoExtractionEnabled', DEFAULT_SETTINGS.autoExtract),
       overwritePackagizerRules: bool('LinkgrabberSettings', 'AddLinksDialogOverwritesPackagizerRulesEnabled', DEFAULT_SETTINGS.overwritePackagizerRules),
-      defaultFolder: typeof folder === 'string' && folder ? folder : null
+      defaultFolder: typeof folder === 'string' && folder ? folder : null,
+      speedLimit: bool('GeneralSettings', 'DownloadSpeedLimitEnabled', false) && typeof speedLimit === 'number' && speedLimit > 0 ? speedLimit : 0,
+      pauseSpeed: typeof pauseSpeed === 'number' && pauseSpeed > 0 ? pauseSpeed : DEFAULT_SETTINGS.pauseSpeed
     }
+  }
+
+  // Read-only: whether JD's last update check found an update. Unknown (failed call) counts as none.
+  async updateAvailable(): Promise<boolean> {
+    try {
+      return (await this.client.callDevice<unknown>(this.deviceId, '/update/isUpdateAvailable', [])) === true
+    } catch {
+      return false
+    }
+  }
+
+  // Restarts JD and installs the update. Only ever on an explicit request of the user.
+  async installUpdate(): Promise<void> {
+    await this.client.callDevice(this.deviceId, '/update/restartAndUpdate', [])
   }
 
   async set(interfaceName: string, storage: string | null, key: string, value: unknown): Promise<unknown> {

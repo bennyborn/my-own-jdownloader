@@ -25,6 +25,7 @@ export interface DownloadsSnapshot {
   totalSpeed: number
   linkCount: number
   runningDownloads: number
+  state: string
 }
 
 export interface DownloadLink {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Check, Layers, Server, ServerOff, X } from 'lucide-vue-next'
-import { ALL, devices, select, showingAll, currentDevice } from './devices'
+import { ArrowUpCircle, Check, Layers, Server, ServerOff, X } from 'lucide-vue-next'
+import { ALL, devices, select, showingAll, currentDevice, updates } from './devices'
 
 // Phone variant of the device switcher: opened from the "Devices" tab of the bottom bar.
 const open = defineModel<boolean>({ required: true })
@@ -22,6 +22,7 @@ const choose = (id: string) => {
           <ServerOff v-if="d.online === false" :size="18" class="off" />
           <Server v-else :size="18" :class="{ on: d.online }" />
           <span class="label">{{ d.name }}</span>
+          <ArrowUpCircle v-if="updates[d.id]" :size="16" class="update" title="Update available" />
           <span v-if="d.online === false" class="state">offline</span>
           <Check v-else-if="!showingAll && d.id === currentDevice" :size="16" />
         </li>
@@ -47,6 +48,7 @@ li:hover { background: var(--hover); }
 li.active { font-weight: 600; }
 li.offline { color: var(--muted); }
 li.all { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
+.update { flex: none; color: var(--extract); }
 .on { color: var(--ok); }
 .off { color: var(--muted); }
 .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

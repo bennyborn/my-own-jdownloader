@@ -6,7 +6,7 @@ export interface SpeedSample {
   v: number // bytes per second
 }
 
-const props = defineProps<{ samples: SpeedSample[]; windowSeconds: number }>()
+const props = defineProps<{ samples: SpeedSample[]; windowSeconds: number; limit?: number }>()
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 let raf = 0
@@ -38,7 +38,9 @@ const draw = () => {
   const visible = props.samples.filter((s) => now - s.t <= span + 10000)
   if (visible.length === 0) return
 
-  const peak = Math.max(...visible.map((s) => s.v), 100 * 1024) * 1.15
+  // With a limit (speed limit, or the pause speed) the limit line is at half height; faster samples still fit.
+  const limit = props.limit && props.limit > 0 ? props.limit : 0
+  const peak = limit ? Math.max(limit * 2, ...visible.map((s) => s.v * 1.15)) : Math.max(...visible.map((s) => s.v), 100 * 1024) * 1.15
   const x = (t: number) => w - ((now - t) / span) * w
   const y = (v: number) => h - 3 - (v / peak) * (h - 8)
 
@@ -70,6 +72,19 @@ const draw = () => {
   ctx.strokeStyle = accent + 'bb'
   ctx.lineWidth = 1.5
   ctx.stroke()
+
+  // The limit: a dashed horizontal line.
+  if (limit) {
+    const ly = Math.round(y(limit)) + 0.5
+    ctx.beginPath()
+    ctx.setLineDash([6, 4])
+    ctx.moveTo(0, ly)
+    ctx.lineTo(w, ly)
+    ctx.strokeStyle = getComputedStyle(el).getPropertyValue('--muted').trim() || '#888'
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
 }
 
 onMounted(() => {
