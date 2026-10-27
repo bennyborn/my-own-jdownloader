@@ -104,6 +104,10 @@ class MainActivity : GuardedActivity() {
         })
         Notifier.channels(this)
         load()
+        if (!Updater.checkedAtStart) {
+            Updater.checkedAtStart = true
+            Updater.check(this)
+        }
     }
 
     // The solver asks for the downloads once its work is done (launchMode singleTask: this screen is reused, not stacked).
@@ -117,6 +121,26 @@ class MainActivity : GuardedActivity() {
     override fun onStart() {
         super.onStart()
         AppState.visible = true
+        Updater.onChange = { onUpdateState() }
+    }
+
+    // The page shows the state of the update; a newer version found at the start is offered once, the settings keep the button.
+    private var offeredUpdate = false
+    private fun onUpdateState() {
+        if (!::web.isInitialized) return
+        tellPage()
+        val state = Updater.state
+        if (state.kind != "available" || offeredUpdate) return
+        offeredUpdate = true
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Update available")
+                .setMessage("Version ${state.name} of the app is on your backend. Download and install it now?")
+                .setPositiveButton("Install") { _, _ -> Updater.install(this) }
+                .setNegativeButton("Later", null)
+                .show()
+        }
     }
 
     // The notification shade (its "Turn off" buttons) takes the focus without pausing the app: the page reads its state again afterwards.
@@ -127,6 +151,7 @@ class MainActivity : GuardedActivity() {
 
     override fun onStop() {
         AppState.visible = false
+        Updater.onChange = null
         super.onStop()
     }
 
@@ -339,6 +364,31 @@ class MainActivity : GuardedActivity() {
                 }, { tellPage() })
             }
             return ""
+        }
+
+        // JSON {name, code}: the installed version of the app.
+        @JavascriptInterface
+        fun appVersion(): String {
+            if (!trusted()) return "{}"
+            return JSONObject().put("name", Updater.installedName(this@MainActivity)).put("code", Updater.installedCode(this@MainActivity)).toString()
+        }
+
+        // JSON {kind, name, message}: see Updater.State. Changes arrive as the event "android-state".
+        @JavascriptInterface
+        fun updateState(): String {
+            if (!trusted()) return "{}"
+            val s = Updater.state
+            return JSONObject().put("kind", s.kind).put("name", s.name).put("message", s.message).toString()
+        }
+
+        @JavascriptInterface
+        fun checkUpdate() {
+            if (trusted()) Updater.check(this@MainActivity)
+        }
+
+        @JavascriptInterface
+        fun installUpdate() {
+            if (trusted()) Updater.install(this@MainActivity)
         }
 
         @JavascriptInterface

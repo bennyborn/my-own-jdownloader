@@ -21,6 +21,7 @@ const ALL_SECTIONS: SettingsSection[] = [
   { id: 'app-captchas', label: 'Captchas', icon: ShieldCheck, scope: 'app' },
   { id: 'app-links', label: 'Incoming links', icon: Link2, scope: 'app' },
   { id: 'app-privacy', label: 'Privacy', icon: Lock, scope: 'app' },
+  { id: 'app-update', label: 'App update', icon: RefreshCw, scope: 'app' },
   { id: 'install', label: 'Browser extension / App', icon: PackagePlus, scope: 'ui' },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, scope: 'ui' },
   { id: 'context-menu', label: 'Context menu', icon: SquareMenu, scope: 'ui' },

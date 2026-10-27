@@ -14,6 +14,7 @@ import AppLinksSettings from './AppLinksSettings.vue'
 import AppNotificationsSettings from './AppNotificationsSettings.vue'
 import AppPrivacySettings from './AppPrivacySettings.vue'
 import AppSettings from './AppSettings.vue'
+import AppUpdateSettings from './AppUpdateSettings.vue'
 import HosterSettings from './HosterSettings.vue'
 import McpSettings from './McpSettings.vue'
 import JdSettings from './JdSettings.vue'
@@ -134,6 +135,7 @@ const fold = (deviceId: string) => {
         <AppCaptchaSettings v-else-if="current.id === 'app-captchas'" />
         <AppLinksSettings v-else-if="current.id === 'app-links'" />
         <AppPrivacySettings v-else-if="current.id === 'app-privacy'" />
+        <AppUpdateSettings v-else-if="current.id === 'app-update'" />
         <BrowserExtensionSettings v-else-if="current.id === 'install'" />
         <PluginSettings v-else-if="current.id === 'plugins'" />
         <ContextMenuSettings v-else-if="current.id === 'context-menu'" />

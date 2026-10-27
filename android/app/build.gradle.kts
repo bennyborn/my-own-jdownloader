@@ -10,8 +10,9 @@ android {
         applicationId = "de.bennyborn.myjd"
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1-spike"
+        // build.sh passes the minutes since 1970, so every build is newer than the one before and the app can tell when the backend offers a newer one.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = "0.1"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -1,6 +1,6 @@
 import { activity } from './activity.js'
 import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import Fastify, { LogController, type FastifyRequest } from 'fastify'
 import fastifyStatic from '@fastify/static'
 import { SKIP_TYPES, type SkipType } from './captcha.js'
@@ -37,7 +37,7 @@ else app.log.warn('UI_PASSWORD is not set: UI and API are not protected')
 // A request that passed the authentication: remember who it was (see activity.ts). The health check, icons and plugin files do not count.
 app.addHook('onRequest', async (request) => {
   const url = request.url
-  if ((url.startsWith('/api/') && !/^\/api\/(health|icons|plugins|extension)\b/.test(url)) || url.startsWith('/mcp')) {
+  if ((url.startsWith('/api/') && !/^\/api\/(health|icons|plugins|extension|app)\b/.test(url)) || url.startsWith('/mcp')) {
     activity.touch(url, request.headers['user-agent'])
     checkSolver()
   }
@@ -922,6 +922,27 @@ app.get('/api/extension/firefox/extension.xpi', async (_request, reply) => {
   return firefox.data ? reply.header('Content-Type', 'application/x-xpinstall').send(firefox.data) : reply.code(503).send(firefox.state)
 })
 app.get('/api/extension/firefox/updates.json', async (_request, reply) => firefox?.updateManifest() ?? reply.code(404).send(noPackage))
+
+// The Android app: the APK is not part of the image but mounted into /app/apk (compose.yaml, built by android/build.sh); none there, none offered.
+const apkFile = fileURLToPath(new URL('../../apk/my-own-jdownloader.apk', import.meta.url))
+app.get('/api/app', async () => {
+  const info = existsSync(apkFile) ? statSync(apkFile) : null
+  // android/build.sh writes the version and the checksum next to the APK; the app compares the version with its own.
+  let meta: { versionCode?: number; versionName?: string; sha256?: string } = {}
+  try {
+    meta = JSON.parse(readFileSync(apkFile.replace(/\.apk$/, '.json'), 'utf8'))
+  } catch {
+    // an APK without the file is still offered for download, but not for the app's own update
+  }
+  return { available: !!info, size: info?.size ?? 0, built: info?.mtime.toISOString() ?? null, ...meta }
+})
+app.get('/api/app/my-own-jdownloader.apk', async (request, reply) => {
+  if (!existsSync(apkFile)) return reply.code(404).send({ error: 'No Android app on this backend' })
+  return reply
+    .header('Content-Type', 'application/vnd.android.package-archive')
+    .header('Content-Disposition', 'attachment; filename="my-own-jdownloader.apk"')
+    .send(readFileSync(apkFile))
+})
 
 // Serve the built frontend if present (production / Docker)
 const publicDir = fileURLToPath(new URL('../public', import.meta.url))

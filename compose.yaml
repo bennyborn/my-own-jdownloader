@@ -11,6 +11,8 @@ services:
       - icon_cache:/app/data
       # Plugins: add your own folders here (restart to pick them up)
       - ./plugins:/app/plugins:ro
+      # The Android app (android/build.sh puts the APK there); offered for download in the settings
+      - ./android/dist:/app/apk:ro
 
   # Development tooling: all npm/node usage happens in this container, never on the host.
   # Usage: docker compose run --rm dev npm install

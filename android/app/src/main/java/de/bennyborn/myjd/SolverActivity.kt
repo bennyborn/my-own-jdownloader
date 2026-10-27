@@ -158,6 +158,16 @@ class SolverActivity : GuardedActivity() {
         finish()
     }
 
+    override fun onStart() {
+        super.onStart()
+        AppState.solving = true
+    }
+
+    override fun onStop() {
+        AppState.solving = false
+        super.onStop()
+    }
+
     override fun onDestroy() {
         done = true
         handler.removeCallbacksAndMessages(null)

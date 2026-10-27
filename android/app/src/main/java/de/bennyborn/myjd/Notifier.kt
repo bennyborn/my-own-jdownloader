@@ -11,6 +11,9 @@ import android.graphics.drawable.Icon
 // True while the app is on screen: an image captcha is then already open in front of the user.
 object AppState {
     @Volatile var visible = false
+    // The solver screen is in front (the interface behind it is stopped then, but the user is looking at a captcha).
+    @Volatile var solving = false
+    val inFront get() = visible || solving
 }
 
 object Notifier {

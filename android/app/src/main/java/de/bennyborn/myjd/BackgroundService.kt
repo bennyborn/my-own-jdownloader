@@ -69,7 +69,7 @@ class BackgroundService : Service() {
         watcher = thread {
             while (!Thread.currentThread().isInterrupted) {
                 val ok = try {
-                    if (AppState.visible) {
+                    if (AppState.inFront) {
                         // The interface in front asks for everything itself (and every ask goes on to the MyJDownloader API). The baseline of
                         // the finished downloads is dropped, so nothing is reported for what happened while the user was looking.
                         unfinished.clear()

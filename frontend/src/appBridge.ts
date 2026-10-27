@@ -31,6 +31,14 @@ export interface AndroidBridge {
   // Switching the lock on or off asks for the phone's fingerprint / PIN first (answer: event "android-state").
   // Returns '' or an error message.
   setLock(enabled: boolean, after: number, hide: boolean): string
+  // JSON {name, code}: the installed version of the app.
+  appVersion(): string
+  // JSON {kind, name, message}: idle | checking | current | unavailable | available | downloading | installing | error. Changes come as "android-state".
+  updateState(): string
+  // Asks the backend whether it offers a newer APK (the app also does this once at every start).
+  checkUpdate(): void
+  // Downloads the offered APK and hands it to Android's installer (which asks the user).
+  installUpdate(): void
 }
 
 export const androidBridge = (window as unknown as { Android?: AndroidBridge }).Android
