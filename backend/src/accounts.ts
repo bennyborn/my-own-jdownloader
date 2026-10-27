@@ -48,6 +48,25 @@ const toAccount = (a: RawAccount): Account => ({
   trafficMax: known(a.trafficMax)
 })
 
+// A login for plain HTTP / FTP sites (JD: "Basic authentication"). The list never contains the passwords.
+export const BASIC_AUTH_TYPES = ['HTTP', 'FTP'] as const
+export type BasicAuthType = (typeof BASIC_AUTH_TYPES)[number]
+export interface BasicAuth {
+  id: number
+  type: BasicAuthType
+  hostmask: string
+  username: string
+  enabled: boolean
+}
+export interface BasicAuthChange {
+  type: BasicAuthType
+  hostmask: string
+  username: string
+  // Empty on an edit keeps the old one
+  password: string
+  enabled: boolean
+}
+
 const HOSTERS_TTL_MS = 3600 * 1000
 
 export class Accounts {
@@ -90,5 +109,24 @@ export class Accounts {
   // Makes JD log in again and update validity and traffic.
   refresh(ids: number[]): Promise<unknown> {
     return this.client.callDevice(this.deviceId, '/accountsV2/refreshAccounts', [ids])
+  }
+
+  async basicAuths(): Promise<BasicAuth[]> {
+    const raw = await this.client.callDevice<{ id: number; type?: string; hostmask?: string; username?: string; enabled?: boolean }[]>(this.deviceId, '/accountsV2/listBasicAuth', [])
+    return raw.map((a) => ({ id: a.id, type: a.type === 'FTP' ? 'FTP' : 'HTTP', hostmask: a.hostmask ?? '', username: a.username ?? '', enabled: a.enabled === true }))
+  }
+
+  addBasicAuth(a: Pick<BasicAuthChange, 'type' | 'hostmask' | 'username' | 'password'>): Promise<unknown> {
+    return this.client.callDevice(this.deviceId, '/accountsV2/addBasicAuth', [a.type, a.hostmask, a.username, a.password])
+  }
+
+  // Only the given fields change (JD leaves out the rest); an empty password stays as it is.
+  updateBasicAuth(id: number, change: Partial<BasicAuthChange>): Promise<unknown> {
+    const { password, ...rest } = change
+    return this.client.callDevice(this.deviceId, '/accountsV2/updateBasicAuth', [{ id, ...rest, ...(password ? { password } : {}) }])
+  }
+
+  removeBasicAuths(ids: number[]): Promise<unknown> {
+    return this.client.callDevice(this.deviceId, '/accountsV2/removeBasicAuths', [ids])
   }
 }

@@ -16,6 +16,7 @@ export const progress = ref<string | null>(null)
 
 // Shows an error toast; it disappears on click or after a time that grows with the message length.
 export const showError = (message: string) => {
+  if (toasts.value.some((t) => t.message === message && t.kind !== 'success')) return // the same message twice says nothing new
   const id = nextId++
   toasts.value = [...toasts.value, { id, message }]
   setTimeout(() => dismissToast(id), Math.min(15000, 4000 + message.length * 60))

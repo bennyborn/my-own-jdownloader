@@ -141,6 +141,7 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 - **Mehrere Geräte im UI:** Geräteauswahl (`DevicePicker.vue`), Übersicht über alle Geräte, Gerät beim Hinzufügen von Links,
   Captchas aller Geräte; Extension und Click'n'Load wählen das Gerät (Standard, feste Wahl oder "jedes Mal fragen").
   Mit zwei Test-JDownloadern geprüft (`test-devices/run.sh`).
+- **Weitere Seiten** (Einstellungen): Basic authentication, System info, Extensions, Context menu (im Backend gespeichert), siehe Status.
 - **Container:** Der Host-Port kommt aus `APP_PORT` (`.env`), im Container läuft die App immer auf 3000. `./plugins` wird eingebunden.
 
 ## Android-App (umgesetzt, `android/`)
@@ -229,6 +230,9 @@ und dann nur in einem abgeschotteten Netz.
 - **Phasen 1–4 sind umgesetzt.** Dazu:
   - Statusleiste mit Geschwindigkeitsgraph (Verlauf im Backend, geht beim Neustart verloren), Theme, Toasts,
     Benachrichtigungen, Logo/Favicon/Web-App-Manifest.
+  - Kontextmenü, konfigurierbar (Einstellungen > Context menu, im Backend gespeichert für alle Browser: `ui-settings.json` im Datenordner, `frontend/src/menuConfig.ts`): ergänzt um Online-Status prüfen,
+    Downloadpasswort, Priorität (standardmäßig aus), Fortsetzen, Archiv-Passwort hinzufügen, Säubern (fertig / fehlgeschlagen / deaktiviert /
+    offline / Duplikate; "unvollständig" und "Archiv prüfen" gibt die JD-API nicht her). Neue JD-Aufrufe immer erst auf den Test-JDs ausprobieren.
   - Download-Liste und Linkgrabber: Kontextmenü (Rename/F2, Enable/Disable, Ordner, Links anzeigen, Entfernen mit und
     ohne Dateien, Zusammenführen, Aufteilen nach Hoster, Hoster abwechselnd sortieren, Start download, an den Anfang/ans
     Ende), Mehrfachmarkierung (Pakete Strg+Klick, Links Klick/Strg/Umschalt), Umsortieren per Drag-and-drop,
@@ -242,35 +246,45 @@ und dann nur in einem abgeschotteten Netz.
     in der Mitte. In der Pause: Schnecke hinter der Geschwindigkeit, gestrichelte Limit-Linie im Graphen (Pause-Speed, sonst
     das Speed-Limit, wenn eingeschaltet), das Limit liegt bei halber Höhe. Die Geräteauswahl zeigt, für welches Gerät ein Update bereitliegt.
   - Captcha-Overlay: ohne unsere Browser-Erweiterung (Marker `data-myjd-extension` an `<html>`) kein "Open solver page", dafür ein Hinweis.
+  - Standardauthentifizierung (Einstellungen > Basic authentication, `BasicAuthSettings.vue`, `/accountsV2/*BasicAuth`): HTTP- und FTP-Logins
+    anlegen, bearbeiten (leeres Passwort lässt es), an/aus, löschen; Passwörter gehen nie zurück ans UI.
+  - JD-Dialoge (`dialogs.ts`, `JdDialogs.vue`, `/dialogs/*`): Fragen, die JD am Desktop stellen würde, werden im UI beantwortet (Overlay wie
+    beim Captcha, alle 5 s, nur bei sichtbarem Tab, alle Geräte). Typen: Auswahl (auch "Datei existiert", "Links schon in der Downloadliste"), Mehrfachauswahl, Text
+    (Archiv-, Container-, Crawler-, Download-Passwort), Login, neues Passwort, Bestätigen, Hinweis; Unbekanntes lässt sich abbrechen. JD nimmt Dialoge nur in
+    seiner Reihenfolge an ("Answer Dialog <id> first"): das Backend meldet 409 mit der gewünschten ID, das UI zeigt diesen Dialog zuerst.
+  - System info (Einstellungen > System info, `jdsystem.ts`): Version, Laufzeit, System, Java, Speicher, Laufwerke, "Check for updates now", Power-Aktionen
+    (JD neu starten / beenden, Computer herunterfahren, Standby, Ruhezustand) jeweils mit Rückfrage. JD in einem Container wird nach Neustart/Beenden/Herunterfahren
+    von Docker neu gestartet.
+  - Extensions (Einstellungen > Extensions, `extensions.ts`): an/aus, installieren (JD schließt die Installation erst nach einem Neustart ab, das UI bietet ihn an,
+    die Erweiterung ist danach aus), die Optionen jeder installierten Erweiterung aufklappbar (`/api/extensions/config`). Die Einstellungen des Archive Extractor
+    gibt es nur noch dort; FFmpeg liegt jetzt unter Downloads.
+  - Update und Neustart zeigen einen Hinweis mit Spinner bis das Gerät wieder da ist (`updateWatch.ts`; erkennt den Neustart über JDs Laufzeit, weil die Online-Anzeige
+    der Geräteliste einen schnellen Neustart verpasst); der gelbe Update-Button ist dabei gesperrt und dreht sich. Hinweise (Toasts) stehen am Handy oben, gleiche Fehler nur einmal.
 - **Offen:** der Meilenstein Direktverbindung, die Lücken unter TODO und die Nutzer-Doku (Phase 6).
 
 ## TODO
 
-- Gaps against MyJDownloader, derived from the JD settings (the generic Settings > JDownloader page already covers every
-  plain value; these need their own UI because the value is a table, a list of rules or an action). Accounts, custom proxies, per-plugin
-  settings, multiple devices, start / pause / stop and the update button are done:
-  - Rule editors (today only raw JSON): link filter (`LinkFilterSettings.FilterList`), packagizer (`PackagizerSettings.RuleList`),
-    hoster rules (`HosterRuleConfig.Rules`; they need the accounts, which exist now), filename / package name replace maps (`FilenameReplaceMap`, `PackagenameReplaceMap`,
-    `FilenameTooLongRegexReplaceMap`), domain rules (`DomainRules`).
-  - Plugin blacklists (`CrawlerHostPluginBlacklist`, `CrawlerCrawlerPluginBlacklist`) as a picker (the per-plugin settings pages exist).
-  - Quick controls in the status bar instead of a trip to the settings: speed limit on/off and value (`DownloadSpeedLimit*`),
-    max. simultaneous downloads, the pause speed (`PauseSpeed`; only shown so far, as snail and line in the graph), silent mode (`SilentModeSettings.ManualEnabled`),
-    free disk space (`ForcedFreeSpaceOnDisk`, storage infos).
-  - Linkgrabber toolbar: toggles for auto confirm / auto start (`LinkgrabberAutoConfirmEnabled`, `LinkgrabberAutoStartEnabled`),
-    quick filters by hoster and file type (`LinkFilterSettings.*Quickfilter*`), handling of offline, duplicate and incomplete archive
-    links (`DefaultOnAdded*LinksAction`, `Handle*OnConfirmLatestSelection`).
-  - Add-links dialog: the options JD's own dialog has (priority, auto extract, archive passwords, packagizer override,
-    duplicates, destination and package name history `DownloadDestinationHistory`, `PackageNameHistory`), with the JD defaults.
-  - Reconnect: "Reconnect now", the current IP, the active method (`ReconnectConfig.ActivePluginID`) and its settings
-    (LiveHeader scripts, UPnP).
-  - Extraction: password list editor (`ExtractionConfig.PasswordList`, one per line works today), the blacklist patterns, and
-    something for the dialogs JD would show (unknown archive password, file exists); check whether the API can answer JD dialogs.
-  - Updates: JD version in the settings header, "Check for updates now" (`/update/runUpdateCheck`; today only JD's own last result
-    is shown).
-  - Settings page itself: readable German/English labels and units for the important keys (many values are milliseconds or
-    bytes), "restart needed" hints, a filter "only changed", expert settings folded away, export/import of the JD config.
-  - Unknown to check against the original: whether MyJDownloader offers anything beyond this (e.g. log upload, scheduler,
-    RSS-like link sources); compare with the original's menu once.
+- Gaps against MyJDownloader (compared with screenshots of the original web UI, 2026-10-27): all closed or decided against. Done: accounts, custom
+  proxies, per-plugin settings, multiple devices, start / pause / stop, update button, add-links dialog, the context menu, basic
+  authentication, JD dialogs, system info with power actions, extension manager. Decided against (user): quick controls in the status
+  bar (the status bar has what is needed), a table layout with columns in the linkgrabber, a filter button and count line (the filter and
+  the per-package counts exist), toggles for auto confirm / start and the offline / duplicate handling (they are in Settings > Linkgrabber),
+  an extraction tasks popup, an own editor for password list and blacklist (text fields, one entry per line, are enough), a
+  connection popup. Not possible: "Create log" (no API call), "check archive" and "incomplete" in the context menu.
+  What is left of the original: nothing.
+- Scheduler: the extension's `EntryList` and Event Scripter's `Scripts` are lists of objects and show as raw JSON. A schedule editor
+  (days, time, action such as start downloads / set speed limit) would be the one editor worth building; not decided.
+- Beyond the original (nice to have, later, no gap): rule editors instead of raw JSON for link filter
+  (`LinkFilterSettings.FilterList`), packagizer (`PackagizerSettings.RuleList`), hoster rules (`HosterRuleConfig.Rules`),
+  filename / package name replace maps (`FilenameReplaceMap`, `PackagenameReplaceMap`, `FilenameTooLongRegexReplaceMap`), domain rules
+  (`DomainRules`); plugin blacklists (`CrawlerHostPluginBlacklist`, `CrawlerCrawlerPluginBlacklist`) as a picker; "Reconnect now"
+  with the current IP and the method settings (the original only has the auto reconnect switch); destination and package
+  name history in the add-links dialog (`DownloadDestinationHistory`, `PackageNameHistory`).
+- Settings page itself: readable German/English labels and units for the important keys (many values are milliseconds or
+  bytes), "restart needed" hints, a filter "only changed", expert settings folded away, export/import of the JD config.
+- JD dialogs: the types of the JD jars are all handled, but "new password", "choose several" and "confirm" were never seen
+  (only the choice, file exists, login and archive password dialogs). "Filename too long" (`IfFilenameTooLongAction`) and the pure GUI
+  dialogs can only be cancelled; a cancelled dialog gets JD's default after its timeout.
 - Backend start: if api.jdownloader.org is unreachable the process exits and Docker restarts it in a loop (seen once). Retry with
   a delay instead, ideally with the server already listening and a "MyJDownloader not reachable" page.
 - Web UI notifications only work over https or on localhost (not on `http://server:port`); document it, or put the UI behind a
@@ -300,6 +314,11 @@ und dann nur in einem abgeschotteten Netz.
   - [x] Image captcha dialog: solve, skip variants, refresh, the countdown
   - [x] Start / stop / start again on a test device (the state name `stopped_state` is cut to `stopped`)
   - [ ] Pause and resume (the state name for "paused" is assumed to be `pause`), snail and limit line
-  - [ ] Install an update (`/update/restartAndUpdate` is untested; only the check `isUpdateAvailable` was seen working)
+  - [x] Install an update (on a test instance, 2026-10-27)
+  - [x] JD dialogs: file exists, login, archive password, the order of several dialogs (on jd-test-2, answered in the UI)
+  - [x] Context menu entries and their settings, priority arrows, basic authentication page, system info and power actions, extensions page
+    (switch, install with restart, options), the toasts at the top on a phone, the update notice and spinner button (2026-10-27)
+  - [x] "Check online status": in the linkgrabber it answers with the counts (online / offline / unknown); in the downloads list the call
+    returns nothing, a gone link shows "File not found" in JD's status anyway
   - [ ] Web UI notifications over https
   - [ ] Set `UI_PASSWORD` and check logo, manifest, icons and the Anti-Captcha endpoints still work

@@ -1,5 +1,5 @@
 import { ref, type Component } from 'vue'
-import { Archive, Bell, Cog, Lock, ShieldCheck, CreditCard, Download, KeyRound, Globe, Link2, Network, Plug, Puzzle, RefreshCw } from 'lucide-vue-next'
+import { Bell, Cog, Lock, ShieldCheck, CreditCard, Download, KeyRound, Globe, Link2, Network, Plug, Puzzle, RefreshCw, SquareMenu, LockKeyhole, Info, Blocks } from 'lucide-vue-next'
 import { inApp } from './appBridge'
 import { parseHash } from './devices'
 
@@ -22,13 +22,16 @@ const ALL_SECTIONS: SettingsSection[] = [
   { id: 'app-links', label: 'Incoming links', icon: Link2, scope: 'app' },
   { id: 'app-privacy', label: 'Privacy', icon: Lock, scope: 'app' },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, scope: 'ui' },
+  { id: 'context-menu', label: 'Context menu', icon: SquareMenu, scope: 'ui' },
   { id: 'mcp', label: 'MCP server', icon: Plug, scope: 'ui' },
+  { id: 'jd-info', label: 'System info', icon: Info, scope: 'jd' },
+  { id: 'extensions', label: 'Extensions', icon: Blocks, scope: 'jd' },
   { id: 'accounts', label: 'Accounts', icon: CreditCard, scope: 'jd' },
+  { id: 'basic-auth', label: 'Basic authentication', icon: LockKeyhole, scope: 'jd' },
   { id: 'hosters', label: 'Hosters', icon: Globe, scope: 'jd' },
   { id: 'downloads', label: 'Downloads', icon: Download, scope: 'jd', category: 'downloads' },
   { id: 'linkgrabber', label: 'Linkgrabber', icon: Link2, scope: 'jd', category: 'linkgrabber' },
   { id: 'connection', label: 'Connection', icon: Network, scope: 'jd', category: 'connection' },
-  { id: 'extraction', label: 'Extraction', icon: Archive, scope: 'jd', category: 'extraction' },
   { id: 'captcha', label: 'Captcha', icon: KeyRound, scope: 'jd', category: 'captcha' },
   { id: 'update', label: 'Updates', icon: RefreshCw, scope: 'jd', category: 'update' },
   { id: 'system', label: 'System', icon: Cog, scope: 'jd', category: 'system' }

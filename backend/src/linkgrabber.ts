@@ -8,6 +8,7 @@ export interface GrabberPackage {
   childCount: number
   hosts: string[]
   saveTo?: string
+  priority?: string
 }
 
 export interface GrabberLink {
@@ -19,6 +20,7 @@ export interface GrabberLink {
   enabled: boolean
   bytesTotal: number
   availability: string
+  priority?: string
   // Set by JD when the link offers variants (e.g. YouTube qualities); absent for links without.
   variant?: LinkVariant
 }
@@ -56,7 +58,7 @@ export class Linkgrabber {
 
   async getPackages(): Promise<GrabberPackage[]> {
     const raw = await this.call<Partial<GrabberPackage>[]>('/linkgrabberv2/queryPackages', [
-      { maxResults: -1, startAt: 0, saveTo: true, bytesTotal: true, childCount: true, hosts: true, enabled: true }
+      { maxResults: -1, startAt: 0, saveTo: true, bytesTotal: true, childCount: true, hosts: true, enabled: true, priority: true }
     ])
     return raw.map((p) => ({
       uuid: p.uuid ?? 0,
@@ -65,14 +67,15 @@ export class Linkgrabber {
       bytesTotal: p.bytesTotal ?? 0,
       childCount: p.childCount ?? 0,
       hosts: p.hosts ?? [],
-      saveTo: p.saveTo
+      saveTo: p.saveTo,
+      priority: p.priority
     }))
   }
 
   // All links of all packages in one call (packageUUID tells which package a link belongs to).
   async getLinks(): Promise<GrabberLink[]> {
     const raw = await this.call<Partial<GrabberLink>[]>('/linkgrabberv2/queryLinks', [
-      { maxResults: -1, startAt: 0, host: true, url: true, bytesTotal: true, availability: true, enabled: true, packageUUID: true, variantID: true, variantName: true }
+      { maxResults: -1, startAt: 0, host: true, url: true, bytesTotal: true, availability: true, enabled: true, packageUUID: true, variantID: true, variantName: true, priority: true }
     ])
     return raw.map((l) => ({
       uuid: l.uuid ?? 0,
@@ -83,6 +86,7 @@ export class Linkgrabber {
       enabled: l.enabled === true,
       bytesTotal: l.bytesTotal ?? 0,
       availability: l.availability ?? 'UNKNOWN',
+      priority: l.priority,
       variant: l.variant?.id ? { id: l.variant.id, name: l.variant.name ?? l.variant.id } : undefined
     }))
   }

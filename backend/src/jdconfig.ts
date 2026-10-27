@@ -61,10 +61,11 @@ const DEFAULT_SETTINGS: JdSettings = { extractionEnabled: true, packagizerEnable
 // Category -> the interfaces (matched by the end of their name) that belong to it. The ids are used by the
 // frontend's sidebar. Interfaces that match nothing (plugins, the desktop GUI) are not shown.
 const CATEGORIES: [string, string[]][] = [
-  ['downloads', ['settings.GeneralSettings', 'DownloadControllerConfig', 'HosterRuleConfig', 'settings.AccountSettings']],
+  ['downloads', ['settings.GeneralSettings', 'DownloadControllerConfig', 'HosterRuleConfig', 'settings.AccountSettings', 'FFmpegSetup']],
   ['linkgrabber', ['LinkgrabberSettings', 'LinkCollectorConfig', 'LinkCrawlerConfig', 'LinkCheckerConfig', 'LinkFilterSettings', 'PackagizerSettings', 'FavIconsConfig']],
   ['connection', ['InternetConnectionSettings', 'ReconnectConfig', 'LiveHeaderReconnectSettings', 'UPUPReconnectSettings']],
-  ['extraction', ['ExtractionConfig', 'FFmpegSetup']],
+  // The extractor's settings are on the page of the extensions (Settings > Extensions); the category stays for the MCP search.
+  ['extraction', ['ExtractionConfig']],
   ['captcha', ['captcha.CaptchaSettings', 'CaptchaMyJDownloaderRemoteSolverSettings', 'JACSolverConfig', 'AntiCaptchaComConfigInterface', 'CheapCaptchaConfigInterface', 'DeathByCaptchaSettings', 'EndCaptchaConfigInterface', 'ImageTyperzConfigInterface', 'Captcha9kwSettings', 'TwoCaptchaConfigInterface']],
   ['update', ['UpdateSettings', 'LastChanceSettings']],
   ['system', ['SilentModeSettings', 'LogConfig', 'Extension', 'MyJDownloaderSettings', 'RemoteAPIConfig']]
@@ -73,6 +74,7 @@ const CATEGORIES: [string, string[]][] = [
 // Left out of the core sections on purpose: the plugins (hosters, media libraries; they have their own page) and what only steers the desktop GUI of the JDownloader.
 // Everything that is neither here nor in CATEGORIES is logged once (see JdConfig.list), so that settings added by a
 // newer JDownloader do not go unnoticed.
+const EXTENSION = /^org\.jdownloader\.extensions\./
 const PLUGIN = /^(org\.jdownloader\.plugins|jd\.plugins)\./
 const EXCLUDED = [PLUGIN, /\.GraphicalUserInterfaceSettings$/, /\.BubbleNotifyConfig$/, /\.ShortcutSettings$/, /\.SoundSettings$/, /\.ExtFileSystemViewSettings$/]
 
@@ -282,6 +284,15 @@ export class JdConfig {
       found.set(id, plugin)
     }
     return [...found.values()].sort((a, b) => a.host.localeCompare(b.host))
+  }
+
+  // One extension's settings: the interface comes from the extension list, its storage is "cfg/<extension id>".
+  async extensionGroup(interfaceName: string, storage: string, label: string): Promise<ConfigGroup | undefined> {
+    if (!EXTENSION.test(interfaceName)) return undefined
+    const raw = await this.client.callDevice<RawEntry[]>(this.deviceId, '/config/list', [`.*${escapeRegex(interfaceName)}.*`, true, true, true, true])
+    const entries = raw.filter((e) => e.interfaceName === interfaceName && e.storage === storage)
+    if (!entries.length) return undefined
+    return { interfaceName, storage, label, entries: entries.map(toEntry) }
   }
 
   // One plugin's settings.

@@ -17,6 +17,7 @@ export interface DownloadPackage {
   hosts: string[]
   activeHosts: string[]
   stopMarked?: boolean // JD stops before this package
+  priority?: string
 }
 
 export interface DownloadsSnapshot {
@@ -44,6 +45,7 @@ export interface DownloadLink {
   bytesTotal: number
   forced?: boolean // force-started and not finished yet
   stopMarked?: boolean // JD stops at this link
+  priority?: string
 }
 
 export interface GrabberLink {
@@ -55,6 +57,7 @@ export interface GrabberLink {
   enabled: boolean
   bytesTotal: number
   availability: string
+  priority?: string
   variant?: { id: string; name: string } // only for links JD offers variants for
 }
 
@@ -66,6 +69,7 @@ export interface GrabberPackage {
   childCount: number
   hosts: string[]
   saveTo?: string
+  priority?: string
   links: GrabberLink[]
 }
 

@@ -16,6 +16,11 @@ export interface ArchiveInfo {
   settings: ArchiveSettings
 }
 
+export const PRIORITIES = ['HIGHEST', 'HIGHER', 'HIGH', 'DEFAULT', 'LOW', 'LOWER', 'LOWEST'] as const
+export type Priority = (typeof PRIORITIES)[number]
+export const CLEANUP_ACTIONS = ['DELETE_DISABLED', 'DELETE_FAILED', 'DELETE_FINISHED', 'DELETE_OFFLINE', 'DELETE_DUPE'] as const
+export type CleanupAction = (typeof CLEANUP_ACTIONS)[number]
+
 // Write operations shared by the download list and the linkgrabber (rename, enable/disable, folder).
 export type MovePosition = 'top' | 'bottom' | 'up' | 'down'
 
@@ -226,11 +231,55 @@ export class ListOps {
     await this.client.callDevice(this.deviceId, '/extraction/startExtractionNow', [linkIds, packageIds])
   }
 
+  // Adds a password to the list JD tries on password protected archives.
+  async addArchivePassword(password: string): Promise<void> {
+    await this.client.callDevice(this.deviceId, '/extraction/addArchivePassword', [password])
+  }
+
   // Download list only: resets links / packages. JD deletes the downloaded (and partial) files and the
   // download starts from zero.
   async resetLinks(linkIds: number[], packageIds: number[]): Promise<void> {
     if (this.area !== 'downloads') throw new Error('Only supported for the download list')
     await this.call('resetLinks', [linkIds, packageIds])
+  }
+
+  // Priority of links / packages (JD sorts the next download by it).
+  async setPriority(priority: Priority, linkIds: number[], packageIds: number[]): Promise<void> {
+    await this.call('setPriority', [priority, linkIds, packageIds])
+  }
+
+  // The password JD sends along when it downloads the links (not the archive password).
+  async setDownloadPassword(password: string, linkIds: number[], packageIds: number[]): Promise<void> {
+    await this.call('setDownloadPassword', [linkIds, packageIds, password])
+  }
+
+  // Asks the hosters again whether the files are still there. The linkgrabber knows the result per link: this waits (a
+  // few seconds at most) until no link of the selection is unknown any more and counts them. The download list does not
+  // report it; JD shows an offline link there through its status text.
+  async checkOnline(linkIds: number[], packageIds: number[]): Promise<{ online: number; offline: number; unknown: number } | undefined> {
+    await this.call('startOnlineStatusCheck', [linkIds, packageIds])
+    if (this.area !== 'linkgrabber') return undefined
+    const count = async () => {
+      const links = (await this.call('queryLinks', [{ maxResults: -1, startAt: 0, availability: true, ...(linkIds.length ? { linkUUIDs: linkIds } : { packageUUIDs: packageIds }) }])) as { availability?: string }[]
+      return { online: links.filter((l) => l.availability === 'ONLINE').length, offline: links.filter((l) => l.availability === 'OFFLINE').length, unknown: links.filter((l) => l.availability !== 'ONLINE' && l.availability !== 'OFFLINE').length }
+    }
+    let result = await count()
+    for (let i = 0; i < 8 && result.unknown > 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      result = await count()
+    }
+    return result
+  }
+
+  // Download list only: takes the links back that were skipped (JD's "resume").
+  async resumeLinks(linkIds: number[], packageIds: number[]): Promise<void> {
+    if (this.area !== 'downloads') throw new Error('Only supported for the download list')
+    await this.call('resumeLinks', [linkIds, packageIds])
+  }
+
+  // Removes the given links / packages from the list, but only those in the given state; the files stay on disk.
+  async cleanup(action: CleanupAction, linkIds: number[], packageIds: number[]): Promise<void> {
+    await this.call('cleanup', [linkIds, packageIds, action, 'REMOVE_LINKS_ONLY', 'SELECTED'])
   }
 
   // Splits packages into one package per host.

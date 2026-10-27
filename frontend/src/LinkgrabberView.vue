@@ -12,6 +12,7 @@ import { formatBytes } from './format'
 import PackageSlot from './PackageSlot.vue'
 import LoadingState from './LoadingState.vue'
 import { showError } from './toast'
+import PriorityMark from './PriorityMark.vue'
 import { clearHovered, menuOn, movedTick, openMenu, setHovered, type Target } from './itemActions'
 import type { GrabberLink, GrabberState } from './types'
 
@@ -33,7 +34,7 @@ const extOf = (l: GrabberLink) => {
 }
 // Packages whose links are all selected count as "marked packages" (merge candidates).
 const markedPackageIds = () => packages.value.filter((p) => p.links.length && selectionState(p.links) === 'all').map((p) => p.uuid)
-const packageTarget = (p: { uuid: number; name: string; enabled: boolean; saveTo?: string }): Target => ({
+const packageTarget = (p: { uuid: number; name: string; enabled: boolean; saveTo?: string; priority?: string }): Target => ({
   area: 'linkgrabber',
   device: props.device,
   kind: 'package',
@@ -41,6 +42,7 @@ const packageTarget = (p: { uuid: number; name: string; enabled: boolean; saveTo
   name: p.name,
   enabled: p.enabled,
   saveTo: p.saveTo,
+  priority: p.priority,
   // unfiltered, so the host filter does not hide the other hosts
   hostCount: new Set(allLinks.value.filter((l) => l.packageUUID === p.uuid).map((l) => l.host)).size,
   mergeIds: markedPackageIds().includes(p.uuid) && markedPackageIds().length > 1 ? markedPackageIds() : undefined,
@@ -53,6 +55,7 @@ const linkTarget = (l: GrabberLink): Target => ({
   id: l.uuid,
   name: l.name,
   enabled: l.enabled,
+  priority: l.priority,
   hasVariants: !!l.variant,
   variantId: l.variant?.id,
   selectedLinkIds: selected.value.has(l.uuid) && selected.value.size > 1 ? [...selected.value] : undefined
@@ -278,6 +281,7 @@ const removeSelected = async () => {
         <button type="button" class="name" :title="p.name" @click="toggleExpanded(p.uuid)">
           <ChevronRight :size="16" class="chevron" :class="{ open: expandedGrabber.has(p.uuid) }" /><span class="pname">{{ p.name }}</span>
         </button>
+        <PriorityMark :priority="p.priority" />
         <span v-if="isPackageDisabled(p)" class="off"><PowerOff :size="13" /> disabled</span>
         <span class="muted summary">{{ countBy(p.links, 'ONLINE') }} online · {{ countBy(p.links, 'OFFLINE') }} offline<template v-if="countBy(p.links, 'UNKNOWN')"> · {{ countBy(p.links, 'UNKNOWN') }} unchecked</template> · {{ formatBytes(p.links.reduce((sum, l) => sum + l.bytesTotal, 0)) }}</span>
       </div>
@@ -305,6 +309,7 @@ const removeSelected = async () => {
           <input type="checkbox" :checked="selected.has(l.uuid)" @click.stop="onLinkClick($event, l)" />
           <span class="lcell">
             <span v-marquee="selected.has(l.uuid)" class="lname" :title="l.name">{{ l.name }}</span>
+            <PriorityMark :priority="l.priority" :size="13" />
             <span v-if="l.variant" class="variant" :title="`Variant: ${l.variant.name}`">{{ l.variant.name }}</span>
           </span>
           <span class="muted host">{{ l.host }}</span>

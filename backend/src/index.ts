@@ -6,7 +6,10 @@ import fastifyStatic from '@fastify/static'
 import { SKIP_TYPES, type SkipType } from './captcha.js'
 import { createAuthHook } from './auth.js'
 import { DeviceRegistry, legacySolverFile, type DeviceContext } from './devices.js'
-import type { Area } from './listops.js'
+import { CLEANUP_ACTIONS, PRIORITIES, type Area, type CleanupAction, type Priority } from './listops.js'
+import { POWER_ACTIONS, type PowerAction } from './jdsystem.js'
+import { DialogOrderError, type DialogAnswer } from './dialogs.js'
+import { BASIC_AUTH_TYPES, type BasicAuthChange, type BasicAuthType } from './accounts.js'
 import { HostIcons } from './icons.js'
 import { Plugins } from './plugins.js'
 import { join } from 'node:path'
@@ -14,6 +17,7 @@ import { SolverTasks } from './solver.js'
 import { MyJdClient } from './myjd/client.js'
 import { registerMcp } from './mcp.js'
 import { McpLog } from './mcplog.js'
+import { UiSettingsStore } from './uisettings.js'
 
 const { MYJD_EMAIL, MYJD_PASSWORD, MYJD_DEVICE, MYJD_DEVICES, UI_PASSWORD } = process.env
 if (!MYJD_EMAIL || !MYJD_PASSWORD) throw new Error('MYJD_EMAIL and MYJD_PASSWORD must be set')
@@ -295,6 +299,58 @@ app.post<{ Params: { area: string }; Body: { enabled?: unknown; linkIds?: unknow
   return { ok: true }
 })
 
+// Priority, download password, online check and clean-up of the marked links / packages, for both lists.
+const selection = (body: { linkIds?: unknown; packageIds?: unknown } | undefined) => {
+  const linkIds = idList(body?.linkIds ?? [])
+  const packageIds = idList(body?.packageIds ?? [])
+  return linkIds && packageIds && linkIds.length + packageIds.length > 0 ? { linkIds, packageIds } : null
+}
+const listOf = (request: FastifyRequest, area: string) =>
+  area === 'downloads' || area === 'linkgrabber' ? dev(request).listOps[area] : null
+type SelectionBody = { linkIds?: unknown; packageIds?: unknown }
+app.post<{ Params: { area: string }; Body: SelectionBody & { priority?: unknown } }>('/api/:area/priority', async (request, reply) => {
+  const ops = listOf(request, request.params.area)
+  const ids = selection(request.body)
+  const priority = request.body?.priority
+  if (!ops || !ids || !PRIORITIES.includes(priority as Priority)) return reply.code(400).send({ error: 'Invalid request' })
+  await ops.setPriority(priority as Priority, ids.linkIds, ids.packageIds)
+  return { ok: true }
+})
+app.post<{ Params: { area: string }; Body: SelectionBody & { password?: unknown } }>('/api/:area/download-password', async (request, reply) => {
+  const ops = listOf(request, request.params.area)
+  const ids = selection(request.body)
+  const password = request.body?.password
+  if (!ops || !ids || typeof password !== 'string') return reply.code(400).send({ error: 'Invalid request' })
+  await ops.setDownloadPassword(password, ids.linkIds, ids.packageIds)
+  return { ok: true }
+})
+app.post<{ Params: { area: string }; Body: SelectionBody }>('/api/:area/check-online', async (request, reply) => {
+  const ops = listOf(request, request.params.area)
+  const ids = selection(request.body)
+  if (!ops || !ids) return reply.code(400).send({ error: 'Invalid request' })
+  return { ok: true, result: await ops.checkOnline(ids.linkIds, ids.packageIds) }
+})
+app.post<{ Params: { area: string }; Body: SelectionBody & { action?: unknown } }>('/api/:area/cleanup', async (request, reply) => {
+  const ops = listOf(request, request.params.area)
+  const ids = selection(request.body)
+  const action = request.body?.action
+  if (!ops || !ids || !CLEANUP_ACTIONS.includes(action as CleanupAction)) return reply.code(400).send({ error: 'Invalid request' })
+  await ops.cleanup(action as CleanupAction, ids.linkIds, ids.packageIds)
+  return { ok: true }
+})
+app.post<{ Body: SelectionBody }>('/api/downloads/resume', async (request, reply) => {
+  const ids = selection(request.body)
+  if (!ids) return reply.code(400).send({ error: 'Invalid request' })
+  await dev(request).listOps.downloads.resumeLinks(ids.linkIds, ids.packageIds)
+  return { ok: true }
+})
+app.post<{ Body: { password?: unknown } }>('/api/extraction/password', async (request, reply) => {
+  const password = request.body?.password
+  if (typeof password !== 'string' || !password.trim()) return reply.code(400).send({ error: 'Invalid request' })
+  await dev(request).listOps.downloads.addArchivePassword(password.trim())
+  return { ok: true }
+})
+
 app.post<{ Params: { area: string }; Body: { directory?: unknown; packageIds?: unknown } }>('/api/:area/directory', async (request, reply) => {
   const { area } = request.params
   const { directory } = request.body ?? {}
@@ -475,6 +531,41 @@ app.get<{ Querystring: { device?: string } }>('/api/captcha', async (request) =>
   return lists.flat()
 })
 
+// Open questions of the JDownloaders (their dialogs). Like the captchas those of all online devices: they block a download
+// whichever device is shown. Offline devices are not asked.
+app.get('/api/dialogs', async () => {
+  const lists = await Promise.all(
+    registry
+      .all()
+      .filter((c) => c.online !== false)
+      .map(async (c) => (await c.dialogs.list().catch(() => [])).map((d) => ({ ...d, device: c.id, deviceName: c.device.name })))
+  )
+  return lists.flat()
+})
+app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/dialogs/:id/answer', async (request, reply) => {
+  const id = Number(request.params.id)
+  const { cancel, index, indices, text, username, password, verification, remember } = request.body ?? {}
+  const optional = (value: unknown, type: string) => value === undefined || typeof value === type
+  const valid =
+    Number.isSafeInteger(id) &&
+    typeof cancel === 'boolean' &&
+    (index === undefined || Number.isSafeInteger(index)) &&
+    (indices === undefined || (Array.isArray(indices) && indices.every((i) => Number.isSafeInteger(i)))) &&
+    optional(text, 'string') &&
+    optional(username, 'string') &&
+    optional(password, 'string') &&
+    optional(verification, 'string') &&
+    optional(remember, 'boolean')
+  if (!valid) return reply.code(400).send({ error: 'Invalid body' })
+  try {
+    await dev(request).dialogs.answer(id, { cancel, index, indices, text, username, password, verification, remember } as DialogAnswer)
+  } catch (e) {
+    if (e instanceof DialogOrderError) return reply.code(409).send({ error: e.message, first: e.first })
+    throw e
+  }
+  return { ok: true }
+})
+
 app.get<{ Params: { id: string } }>('/api/captcha/:id', async (request, reply) => {
   const id = Number(request.params.id)
   if (!Number.isSafeInteger(id)) return reply.code(400).send({ error: 'Invalid id' })
@@ -610,6 +701,70 @@ app.post<{ Body: { ids?: unknown } }>('/api/accounts/refresh', async (request, r
   return { ok: true }
 })
 
+// Logins for HTTP / FTP sites ("Basic authentication"); like the accounts, passwords go in and never out.
+app.get('/api/basic-auth', async (request) => dev(request).accounts.basicAuths())
+app.post<{ Body: { type?: unknown; hostmask?: unknown; username?: unknown; password?: unknown } }>('/api/basic-auth', async (request, reply) => {
+  const { type, hostmask, username, password } = request.body ?? {}
+  if (!BASIC_AUTH_TYPES.includes(type as BasicAuthType) || !text(hostmask) || !text(username) || typeof password !== 'string') return reply.code(400).send({ error: 'Invalid body' })
+  await dev(request).accounts.addBasicAuth({ type: type as BasicAuthType, hostmask: hostmask.trim(), username, password })
+  return { ok: true }
+})
+app.post<{ Body: { id?: unknown; type?: unknown; hostmask?: unknown; username?: unknown; password?: unknown; enabled?: unknown } }>('/api/basic-auth/update', async (request, reply) => {
+  const { id, type, hostmask, username, password, enabled } = request.body ?? {}
+  const valid =
+    Number.isSafeInteger(id) &&
+    (type === undefined || BASIC_AUTH_TYPES.includes(type as BasicAuthType)) &&
+    (hostmask === undefined || text(hostmask)) &&
+    (username === undefined || text(username)) &&
+    (password === undefined || typeof password === 'string') &&
+    (enabled === undefined || typeof enabled === 'boolean')
+  if (!valid) return reply.code(400).send({ error: 'Invalid body' })
+  await dev(request).accounts.updateBasicAuth(id as number, { type, hostmask: (hostmask as string | undefined)?.trim(), username, password, enabled } as Partial<BasicAuthChange>)
+  return { ok: true }
+})
+app.post<{ Body: { ids?: unknown } }>('/api/basic-auth/remove', async (request, reply) => {
+  const { ids } = request.body ?? {}
+  if (!isIdList(ids)) return reply.code(400).send({ error: 'Invalid body' })
+  await dev(request).accounts.removeBasicAuths(ids)
+  return { ok: true }
+})
+
+// The extensions of one device: switch the installed ones on and off, install the others.
+app.get('/api/extensions', async (request) => dev(request).extensions.list())
+app.get<{ Querystring: { id?: string } }>('/api/extensions/config', async (request, reply) => {
+  const { id } = request.query
+  if (!text(id)) return reply.code(400).send({ error: 'Invalid query' })
+  const extension = (await dev(request).extensions.list()).find((e) => e.id === id)
+  const group = extension?.configInterface ? await dev(request).config.extensionGroup(extension.configInterface, `cfg/${id}`, extension.name) : undefined
+  return group ?? reply.code(404).send({ error: 'This extension has no settings' })
+})
+app.post<{ Body: { id?: unknown } }>('/api/extensions/install', async (request, reply) => {
+  const { id } = request.body ?? {}
+  if (!text(id)) return reply.code(400).send({ error: 'Invalid body' })
+  if (!(await dev(request).extensions.install(id))) return reply.code(502).send({ error: 'The JDownloader could not install the extension' })
+  return { ok: true }
+})
+app.post<{ Body: { id?: unknown; enabled?: unknown } }>('/api/extensions/enabled', async (request, reply) => {
+  const { id, enabled } = request.body ?? {}
+  if (!text(id) || typeof enabled !== 'boolean') return reply.code(400).send({ error: 'Invalid body' })
+  if (!(await dev(request).extensions.setEnabled(id, enabled))) return reply.code(502).send({ error: 'The JDownloader did not change the extension' })
+  return { ok: true }
+})
+
+// System information and power actions (restart / close JD, shut the computer down) of one device.
+app.get('/api/jd-system', async (request) => dev(request).system.info())
+app.post('/api/jd-system/check-update', async (request) => {
+  await dev(request).system.checkForUpdates()
+  return { ok: true }
+})
+app.post<{ Body: { action?: unknown } }>('/api/jd-system/power', async (request, reply) => {
+  const { action } = request.body ?? {}
+  if (!POWER_ACTIONS.includes(action as PowerAction)) return reply.code(400).send({ error: 'Invalid body' })
+  request.log.warn({ action, device: dev(request).id }, 'power action requested')
+  await dev(request).system.power(action as PowerAction)
+  return { ok: true }
+})
+
 // The JDownloader's own settings of one device (the page "Settings > JDownloader"). Written straight to the device.
 app.get('/api/jd-config', async (request) => dev(request).config.list())
 // The settings of the JDownloader's plugins (hosters, crawlers, ...): the list first, one plugin's settings on demand.
@@ -716,6 +871,13 @@ app.get<{ Querystring: { device?: string } }>('/api/events', (request, reply) =>
 })
 
 // MCP server for assistants (read-only unless switched on in the settings or by MCP_WRITE=true), behind the same password as the rest.
+const uiSettings = new UiSettingsStore(join(dataDir, 'ui-settings.json'))
+app.get('/api/ui-settings', async () => uiSettings.get())
+app.put<{ Body: { contextMenu?: unknown } }>('/api/ui-settings/context-menu', async (request, reply) => {
+  if (!request.body || typeof request.body.contextMenu !== 'object' || request.body.contextMenu === null) return reply.code(400).send({ error: 'Invalid request' })
+  return uiSettings.setContextMenu(request.body.contextMenu)
+})
+
 registerMcp(app, { registry, stateFile: join(dataDir, 'mcp.json'), debug: new McpLog(), log: (m) => app.log.info(m) })
 
 // Serve the built frontend if present (production / Docker)

@@ -126,7 +126,7 @@ const refresh = async () => {
       </h3>
       <p class="ask">
         <span v-if="more" class="more" :title="`${more} more waiting`">{{ more + 1 }}</span>
-        <strong>{{ view.hoster }}</strong> wants you to solve this captcha<template v-if="multiple && view.deviceName"> <span class="muted">(on {{ view.deviceName }})</span></template>
+        <span class="line"><strong>{{ view.hoster }}</strong> wants you to solve this captcha<template v-if="multiple && view.deviceName"> <span class="muted">(on {{ view.deviceName }})</span></template></span>
       </p>
       <div class="picture" :class="{ loading: refreshing }">
         <img :key="imageVersion" :src="withDevice(`/api/captcha/${view.id}/image?v=${imageVersion}`, view.device)" alt="Captcha" />
@@ -156,6 +156,7 @@ const refresh = async () => {
 .dialog { display: grid; gap: 14px; width: min(460px, 100%); padding: 22px 24px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); }
 h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .ask { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); }
+.ask .line { min-width: 0; }
 .ask strong { color: var(--text); font-weight: 600; }
 .more { min-width: 18px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.75rem; text-align: center; }
 .picture { position: relative; min-height: 96px; display: flex; align-items: center; justify-content: center; padding: 12px; background: #fff; border-radius: 8px; }

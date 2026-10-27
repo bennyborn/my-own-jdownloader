@@ -29,6 +29,7 @@ export interface DownloadPackage {
   // Hosts of the links that are running right now (downloading, waiting or waiting for a captcha)
   activeHosts: string[]
   stopMarked?: boolean // JD stops before this package's downloads (a stop mark sits on the package itself)
+  priority?: string // JD's priority name (DEFAULT, HIGH, LOWEST, ...)
 }
 
 export interface DownloadsSnapshot {
@@ -57,6 +58,7 @@ export interface DownloadLink {
   bytesTotal: number
   forced?: boolean // force-started through us and not finished yet
   stopMarked?: boolean // JD stops at this link
+  priority?: string
 }
 
 type Listener = (snapshot: DownloadsSnapshot) => void
@@ -166,7 +168,8 @@ export class DownloadsPoller {
         extractionStatus: true,
         speed: true,
         eta: true,
-        enabled: true
+        enabled: true,
+        priority: true
       }
     ])
     return raw.map((l) => ({
@@ -183,6 +186,7 @@ export class DownloadsPoller {
       eta: l.eta,
       bytesLoaded: l.bytesLoaded ?? 0,
       bytesTotal: l.bytesTotal ?? 0,
+      priority: l.priority,
       forced: this.isForced({ uuid: l.uuid ?? 0, running: l.running ?? false, finished: l.finished ?? false }, packageUuid),
       stopMarked: l.uuid !== undefined && l.uuid === stopMark
     }))
@@ -245,7 +249,8 @@ export class DownloadsPoller {
             eta: true,
             childCount: true,
             hosts: true,
-            enabled: true
+            enabled: true,
+            priority: true
           }
         ]
       )
@@ -253,6 +258,7 @@ export class DownloadsPoller {
         uuid: p.uuid ?? 0,
         name: p.name ?? '',
         saveTo: p.saveTo,
+        priority: p.priority,
         enabled: p.enabled === true,
         running: p.running ?? false,
         finished: p.finished ?? false,

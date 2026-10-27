@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path'
 import { BandwidthHistory } from './bandwidth.js'
 import { Accounts } from './accounts.js'
+import { Dialogs } from './dialogs.js'
+import { Extensions } from './extensions.js'
+import { JdSystem } from './jdsystem.js'
 import { Captchas } from './captcha.js'
 import { JdConfig } from './jdconfig.js'
 import { DownloadsPoller } from './downloads.js'
@@ -20,6 +23,9 @@ export class DeviceContext {
   readonly solver: SolverRegistration
   readonly config: JdConfig
   readonly accounts: Accounts
+  readonly dialogs: Dialogs
+  readonly system: JdSystem
+  readonly extensions: Extensions
   readonly listOps: { downloads: ListOps; linkgrabber: ListOps }
 
   constructor(
@@ -37,6 +43,9 @@ export class DeviceContext {
     this.solver = new SolverRegistration(client, device.id, solverStateFile)
     this.config = new JdConfig(client, device.id)
     this.accounts = new Accounts(client, device.id)
+    this.dialogs = new Dialogs(client, device.id)
+    this.system = new JdSystem(client, device.id)
+    this.extensions = new Extensions(client, device.id)
     this.listOps = { downloads: new ListOps(client, device.id, 'downloads'), linkgrabber: new ListOps(client, device.id, 'linkgrabber') }
   }
 

@@ -7,8 +7,10 @@ import { ALL, currentDevice, devices, formatHash, multiple, parseHash, select, s
 import { ServerOff } from 'lucide-vue-next'
 import { formatBytes, formatSpeed } from './format'
 import CaptchaDialog from './CaptchaDialog.vue'
+import JdDialogs from './JdDialogs.vue'
 import SolverAlert from './SolverAlert.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import PromptDialog from './PromptDialog.vue'
 import ContextMenu from './ContextMenu.vue'
 import LinksDialog from './LinksDialog.vue'
 import ItemDialogs from './ItemDialogs.vue'
@@ -308,9 +310,11 @@ const dragFor = (device: string) => {
     <StatusBar :snapshot="statusSnapshot" :device="showingAll ? '' : currentDevice" :connected="connected" :solver-jobs="captchas.widgetJobs.value" @add-links="addOpen = true" />
   </div>
   <ContextMenu />
+  <JdDialogs />
   <CaptchaDialog :job="captchas.imageJobs.value[0] ?? null" :more="Math.max(0, captchas.imageJobs.value.length - 1)" @handled="captchas.markHandled" @changed="captchas.reload()" />
   <SolverAlert v-if="!captchas.imageJobs.value.length" :job="captchas.alertJobs.value[0] ?? null" @dismiss="captchas.dismiss" />
   <ConfirmDialog />
+  <PromptDialog />
   <ToastHost />
   <ItemDialogs />
   <LinksDialog />

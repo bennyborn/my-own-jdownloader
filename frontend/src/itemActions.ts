@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 import { askConfirm } from './confirm'
+import { askPrompt } from './prompt'
+import { progress, showSuccess } from './toast'
 import { currentDevice, withDevice } from './devices'
 import { selectedDownloadLinks, selectedDownloadPackages } from './expandedState'
 
@@ -17,6 +19,8 @@ export interface Target {
   finished?: boolean
   stopMarked?: boolean // downloads: JD's stop mark sits on this item
   saveTo?: string
+  priority?: string // JD's priority name of the item (DEFAULT when unchanged)
+  started?: boolean // downloads: some of it is already on disk
   hostCount?: number
   // Linkgrabber packages: ids of all fully selected packages (including this one) when at least two are selected.
   mergeIds?: number[]
@@ -405,4 +409,97 @@ export const sortLinks = async (t: Target) => {
 export const startShowLinks = (target: Target) => {
   closeMenu()
   showingLinks.value = target
+}
+
+// Asks the hosters again whether the files are still there (the availability in the list changes by itself).
+export const checkOnline = async (t: Target) => {
+  closeMenu()
+  progress.value = 'Checking online status…'
+  try {
+    let result: { online: number; offline: number; unknown: number } | undefined
+    await run(async () => (result = (await post(t, `/api/${t.area}/check-online`, idsOf(t))).result))
+    // The linkgrabber reports what it found; in the download list JD marks offline links in their status, shortly after.
+    if (result) showSuccess(`${result.online} online, ${result.offline} offline${result.unknown ? `, ${result.unknown} still unknown` : ''}`)
+    else {
+      showSuccess('Online check started: offline links show up in the list')
+      setTimeout(() => changeTick.value++, 4000)
+    }
+  } catch {
+    /* error is shown via actionError */
+  } finally {
+    progress.value = null
+  }
+}
+
+// Download list: takes skipped links back into the queue.
+export const resumeItem = async (t: Target) => {
+  closeMenu()
+  try {
+    await run(() => post(t, '/api/downloads/resume', idsOf(t)))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+const PRIORITIES = [
+  { value: 'HIGHEST', label: 'Highest' },
+  { value: 'HIGHER', label: 'Higher' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'DEFAULT', label: 'Default' },
+  { value: 'LOW', label: 'Low' },
+  { value: 'LOWER', label: 'Lower' },
+  { value: 'LOWEST', label: 'Lowest' }
+]
+export const setPriority = async (t: Target) => {
+  closeMenu()
+  const priority = await askPrompt({ title: 'Priority', message: `${describe(t)}: JD downloads higher priorities first.`, confirmLabel: 'Set', initial: t.selectedLinkIds || t.mergeIds ? 'DEFAULT' : (t.priority ?? 'DEFAULT'), choices: PRIORITIES })
+  if (!priority) return
+  try {
+    await run(() => post(t, `/api/${t.area}/priority`, { ...idsOf(t), priority }))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+// The password JD sends along when it downloads; empty removes it.
+export const setDownloadPassword = async (t: Target) => {
+  closeMenu()
+  const password = await askPrompt({ title: 'Download password', message: `${describe(t)}: the password JD sends along when downloading (empty removes it).`, confirmLabel: 'Set', placeholder: 'Password', allowEmpty: true })
+  if (password === null) return
+  try {
+    await run(() => post(t, `/api/${t.area}/download-password`, { ...idsOf(t), password }))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+// Adds a password to the list JD tries on password protected archives (Settings > Extensions).
+export const addArchivePassword = async (t: Target) => {
+  closeMenu()
+  const password = await askPrompt({ title: 'Archive password', message: 'JD tries the passwords of this list on every password protected archive.', confirmLabel: 'Add', placeholder: 'Password' })
+  if (!password) return
+  try {
+    await run(() => post(t, '/api/extraction/password', { password }))
+  } catch {
+    /* error is shown via actionError */
+  }
+}
+
+export const CLEANUP_CHOICES = [
+  { value: 'DELETE_FINISHED', label: 'Finished' },
+  { value: 'DELETE_FAILED', label: 'Failed' },
+  { value: 'DELETE_DISABLED', label: 'Disabled' },
+  { value: 'DELETE_OFFLINE', label: 'Offline' },
+  { value: 'DELETE_DUPE', label: 'Duplicates' }
+]
+// Removes the links of the selection that are in the chosen state from the list; the downloaded files stay.
+export const cleanupItem = async (t: Target) => {
+  closeMenu()
+  const action = await askPrompt({ title: 'Clean up', message: `Remove these links from the list. ${describe(t)}; the files on disk stay.`, confirmLabel: 'Remove', choices: CLEANUP_CHOICES })
+  if (!action) return
+  try {
+    await run(() => post(t, `/api/${t.area}/cleanup`, { ...idsOf(t), action }))
+  } catch {
+    /* error is shown via actionError */
+  }
 }

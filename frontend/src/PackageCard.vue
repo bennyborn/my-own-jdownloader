@@ -5,6 +5,7 @@ import { Check, ChevronRight, Clock, Download, Hourglass, Package, PackageOpen, 
 import { vMarquee } from './marquee'
 import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages, selectedPackagesDevice } from './expandedState'
 import { showError } from './toast'
+import PriorityMark from './PriorityMark.vue'
 import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } from './itemActions'
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import PackageSlot from './PackageSlot.vue'
@@ -142,6 +143,8 @@ const pkgTarget = computed<Target>(() => ({
   running: props.pkg.running,
   finished: props.pkg.finished,
   stopMarked: props.pkg.stopMarked,
+  priority: props.pkg.priority,
+  started: props.pkg.bytesLoaded > 0,
   saveTo: props.pkg.saveTo,
   hostCount: props.pkg.hosts.length,
   mergeIds: picked.value && selectedDownloadPackages.value.size > 1 ? [...selectedDownloadPackages.value] : undefined
@@ -156,6 +159,8 @@ const linkTarget = (l: DownloadLink): Target => ({
   running: l.running,
   finished: l.finished,
   stopMarked: l.stopMarked,
+  priority: l.priority,
+  started: l.bytesLoaded > 0,
   selectedLinkIds: selectedDownloadLinks.value.has(l.uuid) && selectedDownloadLinks.value.size > 1 ? [...selectedDownloadLinks.value] : undefined
 })
 
@@ -212,6 +217,7 @@ onUnmounted(() => clearInterval(timer))
       <ChevronRight :size="16" class="chevron" :class="{ open: expanded }" />
       <h2 v-marquee="picked" :title="pkg.name">{{ pkg.name }}</h2>
       <OctagonPause v-if="pkg.stopMarked" :size="15" class="stopmark" title="Stop mark: JD stops before this package" />
+      <PriorityMark :priority="pkg.priority" />
       <span v-if="!pkg.enabled" class="off"><PowerOff :size="13" /> disabled</span>
       <span v-else class="badge">{{ state === 'extract-failed' ? 'extract failed' : state === 'download-error' ? 'error' : state }}</span>
     </button>
@@ -273,7 +279,7 @@ onUnmounted(() => clearInterval(timer))
           <span class="sub">{{ l.running ? formatBytes(l.bytesLoaded) + ' loaded' : '' }}</span>
         </div>
         <div class="cell state" :title="statusTip(l)">
-          <span class="badge" :class="linkBadge(l).kind"><OctagonPause v-if="l.stopMarked" :size="12" class="stopmark" aria-label="Stop mark" /><Zap v-if="showForced(l)" :size="12" class="forced" aria-label="Force-started" />{{ linkBadge(l).text }}</span>
+          <span class="badge" :class="linkBadge(l).kind"><PriorityMark :priority="l.priority" :size="12" /><OctagonPause v-if="l.stopMarked" :size="12" class="stopmark" aria-label="Stop mark" /><Zap v-if="showForced(l)" :size="12" class="forced" aria-label="Force-started" />{{ linkBadge(l).text }}</span>
           <span class="sub">{{ linkBadge(l).detail }}</span>
         </div>
         <span class="stateicon" :class="linkBadge(l).kind" :title="linkBadge(l).text">

@@ -3,7 +3,11 @@ import { computed, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight, HardDrive, Monitor, ServerOff, Smartphone } from 'lucide-vue-next'
 import { deviceName, devices, pickSettingsDevice, settingsDevice, showingAll } from './devices'
 import { phone, SECTIONS, settingsOpen, settingsSection, type SettingsSection } from './settings'
+import ContextMenuSettings from './ContextMenuSettings.vue'
 import AccountSettings from './AccountSettings.vue'
+import ExtensionSettings from './ExtensionSettings.vue'
+import JdInfoSettings from './JdInfoSettings.vue'
+import BasicAuthSettings from './BasicAuthSettings.vue'
 import AppCaptchaSettings from './AppCaptchaSettings.vue'
 import AppLinksSettings from './AppLinksSettings.vue'
 import AppNotificationsSettings from './AppNotificationsSettings.vue'
@@ -119,7 +123,7 @@ const fold = (deviceId: string) => {
           <HardDrive :size="14" /> Stored on the JDownloader<template v-if="name"> “{{ name }}”</template>: changes apply at once and to every client of it.
         </template>
         <template v-else-if="current.scope === 'app'"><Smartphone :size="14" /> Stored on this phone only: neither the backend nor the JDownloader is affected.</template>
-        <template v-else><Monitor :size="14" /> Stored in this web interface only: the JDownloader is not affected.</template>
+        <template v-else><Monitor :size="14" /> Stored by this web interface (for every browser that opens it): the JDownloader is not affected.</template>
       </p>
       <h2 class="title">{{ current.label }}</h2>
       <Transition name="sub" mode="out-in">
@@ -130,8 +134,12 @@ const fold = (deviceId: string) => {
         <AppLinksSettings v-else-if="current.id === 'app-links'" />
         <AppPrivacySettings v-else-if="current.id === 'app-privacy'" />
         <PluginSettings v-else-if="current.id === 'plugins'" />
+        <ContextMenuSettings v-else-if="current.id === 'context-menu'" />
         <McpSettings v-else-if="current.id === 'mcp'" />
+        <JdInfoSettings v-else-if="current.id === 'jd-info'" />
+        <ExtensionSettings v-else-if="current.id === 'extensions'" />
         <AccountSettings v-else-if="current.id === 'accounts'" />
+        <BasicAuthSettings v-else-if="current.id === 'basic-auth'" />
         <HosterSettings v-else-if="current.id === 'hosters'" />
         <JdSettings v-else-if="current.category" :key="current.id" :category="current.category" :title="current.label" />
         </div>

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ArrowUpCircle, Pause, Play, Square } from 'lucide-vue-next'
+import { ArrowUpCircle, Loader, Pause, Play, Square } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 import { askConfirm } from './confirm'
 import { devices, updates, withDevice } from './devices'
 import { showError } from './toast'
+import { updating, watchUpdate } from './updateWatch'
 import type { DownloadsSnapshot } from './types'
 
 // Start, pause and stop for the whole JDownloader; in the overview for every online device.
@@ -27,7 +28,8 @@ const label = computed(() => (action.value ? LABELS[action.value] : 'Download st
 const state = computed(() => (action.value === 'pause' ? 'running' : action.value === 'resume' ? 'paused' : 'stopped'))
 
 // An update JD found: a third button appears (the devices module looks for updates now and then).
-const updateAvailable = computed(() => updates.value[props.targets[0]] === true)
+const isUpdating = computed(() => updating.value.includes(props.targets[0]))
+const updateAvailable = computed(() => updates.value[props.targets[0]] === true || isUpdating.value)
 
 const update = async () => {
   const device = props.targets[0]
@@ -43,6 +45,7 @@ const update = async () => {
     const res = await fetch(withDevice('/api/update/install', device), { method: 'POST' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     updates.value = { ...updates.value, [device]: false }
+    watchUpdate(device)
   } catch (e) {
     showError(`Update failed: ${e instanceof Error ? e.message : e}`)
   } finally {
@@ -100,7 +103,7 @@ const stop = async () => {
       <Play v-else :size="18" />
     </button>
     <button type="button" class="stop" title="Stop all downloads" aria-label="Stop all downloads" :disabled="busy || !canStop" @click="stop"><Square :size="16" /></button>
-    <button v-if="updateAvailable" type="button" class="update" title="Update available (click to install)" aria-label="Update JDownloader" :disabled="busy" @click="update"><ArrowUpCircle :size="18" /></button>
+    <button v-if="updateAvailable" type="button" class="update" :title="isUpdating ? 'Update running' : 'Update available (click to install)'" aria-label="Update JDownloader" :disabled="busy || isUpdating" @click="update"><Loader v-if="isUpdating" :size="18" class="spin" /><ArrowUpCircle v-else :size="18" /></button>
   </div>
 </template>
 
@@ -113,5 +116,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .play.running { color: var(--accent); }
 .update { color: var(--extract); border-color: var(--extract); }
 .update:hover:not(:disabled), .update:active:not(:disabled) { color: #1b1b1b; background: var(--extract); border-color: var(--extract); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.update:disabled { opacity: 1; }
 .stop:hover:not(:disabled) { color: #d14343; }
 </style>

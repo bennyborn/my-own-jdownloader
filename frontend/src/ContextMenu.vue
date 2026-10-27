@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ArchiveRestore, RotateCcw, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
+import { ArchiveRestore, BrushCleaning, CircleCheck, Flag, KeyRound, Lock, RotateCcw, SkipForward, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { closeMenu, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
+import { menuEntryOn as on } from './menuConfig'
+import { addArchivePassword, checkOnline, cleanupItem, closeMenu, resumeItem, setDownloadPassword, setPriority, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
 const target = computed(() => menu.value?.target)
 // Starting only makes sense for what is waiting: not for a running or a finished download (JD has no per-download pause).
@@ -86,12 +87,17 @@ onUnmounted(() => {
           <Play :size="15" /> Start download
         </button>
       </li>
-      <li v-if="target.area === 'downloads' && !target.finished && !target.selectedLinkIds">
+      <li v-if="on('stopMark') && target.area === 'downloads' && !target.finished && !target.selectedLinkIds">
         <button type="button" role="menuitem" @click="toggleStopMark(target)">
           <OctagonPause :size="15" style="color: #e0a030" /> {{ target.stopMarked ? 'Remove stop mark' : 'Set stop mark here' }}
         </button>
       </li>
-      <li v-if="hasArchiveEntries">
+      <li v-if="on('resume') && target.area === 'downloads'">
+        <button type="button" role="menuitem" @click="resumeItem(target)">
+          <SkipForward :size="15" /> Resume
+        </button>
+      </li>
+      <li v-if="on('extract') && hasArchiveEntries">
         <button type="button" role="menuitem" :disabled="!canExtract" :title="canExtract ? undefined : 'Not all parts are downloaded yet'" @click="startExtraction(target)">
           <ArchiveRestore :size="15" /> Extract now
         </button>
@@ -111,13 +117,13 @@ onUnmounted(() => {
           <Merge :size="15" /> Merge {{ target.mergeIds.length }} packages here
         </button>
       </li>
-      <li v-if="stopsRunning || canStart || hasArchiveEntries || (target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1)" class="sep" role="separator" />
-      <li>
+      <li v-if="stopsRunning || canStart || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1) || (on('stopMark') && target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || (on('resume') && target.area === 'downloads') || (on('extract') && hasArchiveEntries)" class="sep" role="separator" />
+      <li v-if="on('rename')">
         <button type="button" role="menuitem" @click="startRename(target)">
           <Pencil :size="15" /> Rename <kbd>F2</kbd>
         </button>
       </li>
-      <li>
+      <li v-if="on('showLinks')">
         <button type="button" role="menuitem" @click="startShowLinks(target)">
           <Link2 :size="15" /> {{ target.kind === 'package' ? 'Show download links…' : 'Show download link…' }}
         </button>
@@ -127,34 +133,57 @@ onUnmounted(() => {
           <component :is="target.enabled ? PowerOff : Power" :size="15" /> {{ target.enabled ? 'Disable' : 'Enable' }}{{ target.selectedLinkIds ? ` ${target.selectedLinkIds.length} selected` : '' }}
         </button>
       </li>
-      <li v-if="target.kind === 'package'">
+      <li v-if="on('checkOnline')">
+        <button type="button" role="menuitem" @click="checkOnline(target)">
+          <CircleCheck :size="15" /> Check online status
+        </button>
+      </li>
+      <li v-if="on('downloadPassword')">
+        <button type="button" role="menuitem" :disabled="target.started" :title="target.started ? 'JD only uses it before the download has started' : undefined" @click="setDownloadPassword(target)">
+          <KeyRound :size="15" /> Set download password…
+        </button>
+      </li>
+      <li v-if="on('priority')">
+        <button type="button" role="menuitem" @click="setPriority(target)">
+          <Flag :size="15" /> Set priority…
+        </button>
+      </li>
+      <li v-if="on('folder') && target.kind === 'package'">
         <button type="button" role="menuitem" @click="startFolder(target)">
           <Folder :size="15" /> Change download folder…
         </button>
       </li>
-      <li v-if="target.kind === 'package'">
+      <li v-if="on('split') && target.kind === 'package'">
         <button type="button" role="menuitem" :disabled="!!splitBlocked(target)" :title="splitBlocked(target)" @click="splitByHost(target)">
           <Split :size="15" /> Split by host…
         </button>
       </li>
-      <li v-if="target.kind === 'package' && (target.hostCount ?? 0) > 1">
+      <li v-if="on('interleave') && target.kind === 'package' && (target.hostCount ?? 0) > 1">
         <button type="button" role="menuitem" @click="interleaveHosts(target)">
           <Shuffle :size="15" /> Interleave hosters…
         </button>
       </li>
-      <li v-if="target.kind === 'package'">
+      <li v-if="on('sort') && target.kind === 'package'">
         <button type="button" role="menuitem" @click="sortLinks(target)">
           <ArrowDownAZ :size="15" /> Sort links alphabetically
         </button>
       </li>
-      <template v-if="hasArchiveEntries">
+      <template v-if="hasArchiveEntries && (on('archiveOptions') || on('archivePassword'))">
         <li class="sep" role="separator" />
+        <li v-if="on('archivePassword')">
+          <button type="button" role="menuitem" @click="addArchivePassword(target)">
+            <Lock :size="15" /> Add archive password…
+          </button>
+        </li>
+        <template v-if="on('archiveOptions')">
         <li v-for="opt in archiveOptions" :key="opt.key">
           <button type="button" role="menuitemcheckbox" :disabled="menuArchivesPending" :aria-checked="archiveOn(opt.key)" @click="toggleArchiveSetting(target, opt.key)">
             <span class="box"><Check v-if="archiveOn(opt.key)" :size="13" /></span> {{ opt.label }}
           </button>
         </li>
+        </template>
       </template>
+      <template v-if="on('move')">
       <li class="sep" role="separator" />
       <li>
         <button type="button" role="menuitem" @click="moveToEdge(target, 'up')">
@@ -176,8 +205,14 @@ onUnmounted(() => {
           <ArrowDownToLine :size="15" /> Move to bottom
         </button>
       </li>
+      </template>
       <li class="sep" role="separator" />
-      <li v-if="target.area === 'downloads'">
+      <li v-if="on('cleanup')">
+        <button type="button" role="menuitem" @click="cleanupItem(target)">
+          <BrushCleaning :size="15" /> Clean up…
+        </button>
+      </li>
+      <li v-if="on('reset') && target.area === 'downloads'">
         <button type="button" role="menuitem" class="danger" @click="resetItem(target)">
           <RotateCcw :size="15" /> Reset…
         </button>
