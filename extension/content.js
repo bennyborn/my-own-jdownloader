@@ -1,7 +1,7 @@
 // Runs on every page but only acts on the marker "#myjd-captcha=<id>&device=<device id>" that the extension itself sets.
 ;(() => {
-  // Lets the web UI see that the extension is active (the captcha overlay checks it before offering the solver page).
-  document.documentElement.setAttribute('data-myjd-extension', '')
+  // Lets the web UI see that the extension is active, and which version (the captcha overlay checks it before offering the solver page).
+  document.documentElement.setAttribute('data-myjd-extension', chrome.runtime.getManifest().version)
   const match = location.hash.match(/^#myjd-captcha=(\d+)(?:&device=([\w-]+))?$/)
   if (!match) return
   const id = Number(match[1])

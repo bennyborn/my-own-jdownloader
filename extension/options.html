@@ -39,12 +39,17 @@
   #msg { color: var(--ok); font-size: 0.85rem; }
   button.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
   button.secondary:hover { background: var(--hover); }
-  #testmsg { font-size: 0.85rem; color: var(--muted); }
-  #testmsg.err { color: #d14343; }
+  #testmsg, #updatemsg { font-size: 0.85rem; color: var(--muted); }
+  #testmsg.err, #updatemsg.err { color: #d14343; }
+  .field a { color: var(--accent); }
 </style>
 <main>
   <h1><img src="icons/icon48.png" alt="" /> Settings</h1>
   <div class="card">
+    <div class="field" id="access" hidden>
+      <span>Access to websites <small>Firefox does not give an extension access to other addresses by itself. Without it the backend cannot be reached and Click'n'Load does not work.</small></span>
+      <div class="actions"><button type="button" id="grant">Allow access</button><span id="grantmsg"></span></div>
+    </div>
     <label>Backend URL <small>The address of your my-own-jdownloader, e.g. http://192.168.1.10:3000</small><input id="url" placeholder="http://192.168.1.10:3000" /></label>
     <label>UI password <small>Leave empty if the backend has no password</small><input id="password" type="password" autocomplete="off" /></label>
     <label class="check"><input id="autoTurnstile" type="checkbox" /> Solve Cloudflare Turnstile automatically <small>While the web interface is open in a tab, the hoster page opens in the background; it comes to the front if a click is needed</small></label>
@@ -59,6 +64,11 @@
     </div>
     <label class="check"><input id="cnl" type="checkbox" /> Handle Click'n'Load <small>Pages offering Click'n'Load send their links to your linkgrabber</small></label>
     <div class="actions"><button id="save">Save</button><span id="msg"></span></div>
+    <div class="field">
+      <span>Extension version <small id="version"></small></span>
+      <div class="actions"><button type="button" id="update" class="secondary">Check for updates</button><span id="updatemsg"></span></div>
+      <small>Updates come from the backend and use the saved URL. <a id="zip" hidden>Download as ZIP</a></small>
+    </div>
   </div>
 </main>
 <script src="options.js"></script>

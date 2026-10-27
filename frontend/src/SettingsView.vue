@@ -5,6 +5,7 @@ import { deviceName, devices, pickSettingsDevice, settingsDevice, showingAll } f
 import { phone, SECTIONS, settingsOpen, settingsSection, type SettingsSection } from './settings'
 import ContextMenuSettings from './ContextMenuSettings.vue'
 import AccountSettings from './AccountSettings.vue'
+import BrowserExtensionSettings from './BrowserExtensionSettings.vue'
 import ExtensionSettings from './ExtensionSettings.vue'
 import JdInfoSettings from './JdInfoSettings.vue'
 import BasicAuthSettings from './BasicAuthSettings.vue'
@@ -133,6 +134,7 @@ const fold = (deviceId: string) => {
         <AppCaptchaSettings v-else-if="current.id === 'app-captchas'" />
         <AppLinksSettings v-else-if="current.id === 'app-links'" />
         <AppPrivacySettings v-else-if="current.id === 'app-privacy'" />
+        <BrowserExtensionSettings v-else-if="current.id === 'install'" />
         <PluginSettings v-else-if="current.id === 'plugins'" />
         <ContextMenuSettings v-else-if="current.id === 'context-menu'" />
         <McpSettings v-else-if="current.id === 'mcp'" />

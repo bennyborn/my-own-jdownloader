@@ -100,9 +100,9 @@ const onDocumentClick = (e: MouseEvent) => {
   if (selectedDownloadLinks.value.size) selectedDownloadLinks.value = new Set()
   if (selectedDownloadPackages.value.size) selectedDownloadPackages.value = new Set()
 }
-// The browser's own context menu is replaced by ours; it stays in text fields (copy / paste).
+// The browser's own context menu is replaced by ours; it stays in text fields (copy / paste) and on the settings pages (save a link as).
 const onContextMenu = (e: MouseEvent) => {
-  if (!(e.target as HTMLElement | null)?.closest('input, textarea, [contenteditable]')) e.preventDefault()
+  if (tab.value !== 'settings' && !(e.target as HTMLElement | null)?.closest('input, textarea, [contenteditable]')) e.preventDefault()
 }
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)

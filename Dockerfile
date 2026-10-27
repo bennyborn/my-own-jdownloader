@@ -17,5 +17,6 @@ RUN npm install --omit=dev -w backend
 COPY --from=build /app/backend/dist backend/dist
 COPY --from=build /app/frontend/dist backend/public
 COPY plugins plugins
+COPY extension extension
 EXPOSE 3000
 CMD ["node", "backend/dist/index.js"]

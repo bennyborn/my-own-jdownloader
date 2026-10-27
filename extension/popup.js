@@ -175,6 +175,12 @@ const list = document.getElementById('list')
 const captchasSection = document.getElementById('captchas')
 const devicesTitle = document.getElementById('devices-title')
 document.getElementById('options').addEventListener('click', () => chrome.runtime.openOptionsPage())
+const updateNotice = document.getElementById('update')
+updateNotice.addEventListener('click', () => chrome.runtime.openOptionsPage())
+void chrome.storage.local.get('update').then(({ update }) => {
+  if (update) updateNotice.textContent = `Extension update ${update} is available. Open the settings to install it.`
+  updateNotice.hidden = !update
+})
 
 // Captcha rows are only rebuilt when the set of jobs changes; the countdown is updated in place every
 // second, so clicks never hit a row that was just replaced.

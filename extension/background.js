@@ -1,4 +1,5 @@
 import { api, getCnlDevice, getCnlTarget, getSettings, withDevice } from './api.js'
+import { checkForUpdate } from './update.js'
 
 // Badge with the number of open captchas. Alarms are limited to 30 s in MV3, which is fine here
 // (a job stays open for 10 minutes); the popup refreshes on its own.
@@ -90,9 +91,19 @@ const refreshBadge = async () => {
     await chrome.action.setBadgeText({ text: '!' })
   }
 }
-chrome.runtime.onInstalled.addListener(() => chrome.alarms.create('poll', { periodInMinutes: 0.5 }))
-chrome.runtime.onStartup.addListener(() => chrome.alarms.create('poll', { periodInMinutes: 0.5 }))
-chrome.alarms.onAlarm.addListener((alarm) => alarm.name === 'poll' && void refreshBadge())
+// Looks for a newer version of the extension on the backend; the popup and the settings page show the result.
+const lookForUpdate = () => checkForUpdate().catch(() => {})
+const startAlarms = () => {
+  chrome.alarms.create('poll', { periodInMinutes: 0.5 })
+  chrome.alarms.create('update', { periodInMinutes: 360 })
+  void lookForUpdate()
+}
+chrome.runtime.onInstalled.addListener(startAlarms)
+chrome.runtime.onStartup.addListener(startAlarms)
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'poll') void refreshBadge()
+  if (alarm.name === 'update') void lookForUpdate()
+})
 
 // Opens the hoster's real page; the content script there recognises the marker in the hash.
 const openCaptcha = async (id, device, active = true) => {
@@ -252,7 +263,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true
   }
   if (msg.type === 'test-notification') {
-    chrome.notifications.getPermissionLevel().then((level) => {
+    // Firefox has no getPermissionLevel: it just tries.
+    ;(chrome.notifications.getPermissionLevel?.() ?? Promise.resolve('granted')).then((level) => {
       if (level !== 'granted') return sendResponse({ ok: false, error: 'Notifications are blocked for the browser (system or browser settings)' })
       chrome.notifications.create('test', { type: 'basic', iconUrl: 'icons/icon128.png', title: 'My Own JDownloader', message: 'Notifications work.' }, () => {
         const error = chrome.runtime.lastError?.message

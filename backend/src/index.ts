@@ -10,6 +10,8 @@ import { CLEANUP_ACTIONS, PRIORITIES, type Area, type CleanupAction, type Priori
 import { POWER_ACTIONS, type PowerAction } from './jdsystem.js'
 import { DialogOrderError, type DialogAnswer } from './dialogs.js'
 import { BASIC_AUTH_TYPES, type BasicAuthChange, type BasicAuthType } from './accounts.js'
+import { EXTENSION_TARGETS, ExtensionBundle } from './extension.js'
+import { FirefoxPackage, firefoxIdFor, publicUrlFrom } from './firefox.js'
 import { HostIcons } from './icons.js'
 import { Plugins } from './plugins.js'
 import { join } from 'node:path'
@@ -35,7 +37,7 @@ else app.log.warn('UI_PASSWORD is not set: UI and API are not protected')
 // A request that passed the authentication: remember who it was (see activity.ts). The health check, icons and plugin files do not count.
 app.addHook('onRequest', async (request) => {
   const url = request.url
-  if ((url.startsWith('/api/') && !/^\/api\/(health|icons|plugins)\b/.test(url)) || url.startsWith('/mcp')) {
+  if ((url.startsWith('/api/') && !/^\/api\/(health|icons|plugins|extension)\b/.test(url)) || url.startsWith('/mcp')) {
     activity.touch(url, request.headers['user-agent'])
     checkSolver()
   }
@@ -879,6 +881,47 @@ app.put<{ Body: { contextMenu?: unknown } }>('/api/ui-settings/context-menu', as
 })
 
 registerMcp(app, { registry, stateFile: join(dataDir, 'mcp.json'), debug: new McpLog(), log: (m) => app.log.info(m) })
+
+// The browser extension, shipped in the image as one package per kind of browser (see extension.ts): the targets with the version, then
+// per target the file list for its update check, single files for the update itself and a ZIP for the first installation.
+// (Not "extensions": that is the JDownloader's own extensions.)
+const publicUrl = publicUrlFrom(process.env.PUBLIC_URL)
+const firefoxId = firefoxIdFor(dataDir)
+const extensionBundles = ExtensionBundle.loadAll(fileURLToPath(new URL('../../extension', import.meta.url)), { publicUrl, firefoxId })
+if (!extensionBundles.size) app.log.warn('The browser extension is not in the image: no download and no update')
+// Firefox installs only what Mozilla signed: with PUBLIC_URL (https) set, the signing runs in the background (firefox.ts).
+const firefoxBundle = extensionBundles.get('firefox')
+const firefox = firefoxBundle && new FirefoxPackage(firefoxBundle, { publicUrl, issuer: process.env.AMO_JWT_ISSUER, secret: process.env.AMO_JWT_SECRET, firefoxId }, dataDir, (m) => app.log.info(m))
+if (firefox) void firefox.start()
+else if (process.env.AMO_JWT_ISSUER) app.log.warn('PUBLIC_URL (https) is not set: no Firefox extension')
+const noPackage = { error: 'No such browser extension package' }
+app.get('/api/extension', async () => ({
+  version: [...extensionBundles.values()][0]?.version ?? null,
+  targets: [...extensionBundles.keys()].map((id) => ({ id, label: EXTENSION_TARGETS[id].label, ext: EXTENSION_TARGETS[id].ext, ...(id === 'firefox' && firefox ? firefox.state : { state: 'ready' }) }))
+}))
+app.get<{ Params: { target: string } }>('/api/extension/:target', async (request, reply) => {
+  const bundle = extensionBundles.get(request.params.target)
+  return bundle ? { version: bundle.version, files: bundle.files } : reply.code(404).send(noPackage)
+})
+app.get<{ Params: { target: string }; Querystring: { path?: string } }>('/api/extension/:target/file', async (request, reply) => {
+  const data = extensionBundles.get(request.params.target)?.read(request.query.path ?? '')
+  return data ? reply.header('Content-Type', 'application/octet-stream').send(data) : reply.code(404).send(noPackage)
+})
+app.get<{ Params: { target: string } }>('/api/extension/:target/extension.zip', async (request, reply) => {
+  const { target } = request.params
+  const bundle = extensionBundles.get(target)
+  if (!bundle || EXTENSION_TARGETS[target].ext !== 'zip') return reply.code(404).send(noPackage)
+  return reply
+    .header('Content-Type', 'application/zip')
+    .header('Content-Disposition', `attachment; filename="my-own-jdownloader-${target}-${bundle.version}.zip"`)
+    .send(bundle.pack())
+})
+// Only what Mozilla signed; Firefox is left to offer the installation.
+app.get('/api/extension/firefox/extension.xpi', async (_request, reply) => {
+  if (!firefox) return reply.code(404).send(noPackage)
+  return firefox.data ? reply.header('Content-Type', 'application/x-xpinstall').send(firefox.data) : reply.code(503).send(firefox.state)
+})
+app.get('/api/extension/firefox/updates.json', async (_request, reply) => firefox?.updateManifest() ?? reply.code(404).send(noPackage))
 
 // Serve the built frontend if present (production / Docker)
 const publicDir = fileURLToPath(new URL('../public', import.meta.url))

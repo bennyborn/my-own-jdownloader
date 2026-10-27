@@ -1,5 +1,5 @@
 import { ref, type Component } from 'vue'
-import { Bell, Cog, Lock, ShieldCheck, CreditCard, Download, KeyRound, Globe, Link2, Network, Plug, Puzzle, RefreshCw, SquareMenu, LockKeyhole, Info, Blocks } from 'lucide-vue-next'
+import { Bell, Cog, Lock, ShieldCheck, CreditCard, Download, KeyRound, Globe, Link2, Network, Plug, Puzzle, RefreshCw, SquareMenu, LockKeyhole, Info, Blocks, PackagePlus } from 'lucide-vue-next'
 import { inApp } from './appBridge'
 import { parseHash } from './devices'
 
@@ -21,6 +21,7 @@ const ALL_SECTIONS: SettingsSection[] = [
   { id: 'app-captchas', label: 'Captchas', icon: ShieldCheck, scope: 'app' },
   { id: 'app-links', label: 'Incoming links', icon: Link2, scope: 'app' },
   { id: 'app-privacy', label: 'Privacy', icon: Lock, scope: 'app' },
+  { id: 'install', label: 'Browser extension / App', icon: PackagePlus, scope: 'ui' },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, scope: 'ui' },
   { id: 'context-menu', label: 'Context menu', icon: SquareMenu, scope: 'ui' },
   { id: 'mcp', label: 'MCP server', icon: Plug, scope: 'ui' },

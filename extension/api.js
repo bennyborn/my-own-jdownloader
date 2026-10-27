@@ -1,7 +1,15 @@
 // Talks to the my-own-jdownloader backend (URL and UI password come from the options page).
+// The package of the backend may carry its address (defaults.json, the Firefox one does): used until one is saved.
+let packaged
+export const packagedUrl = () =>
+  (packaged ??= fetch(chrome.runtime.getURL('defaults.json'))
+    .then((res) => (res.ok ? res.json() : {}))
+    .then((d) => d.backendUrl ?? '')
+    .catch(() => ''))
+
 export const getSettings = async () => {
-  const { backendUrl = '', password = '' } = await chrome.storage.local.get(['backendUrl', 'password'])
-  return { backendUrl: backendUrl.replace(/\/+$/, ''), password }
+  const { backendUrl, password = '' } = await chrome.storage.local.get(['backendUrl', 'password'])
+  return { backendUrl: (backendUrl || (await packagedUrl())).replace(/\/+$/, ''), password }
 }
 
 // Host icons come from the backend; <img> cannot send the password, so they are fetched with it.
@@ -40,7 +48,7 @@ export class ApiError extends Error {
   }
 }
 
-export const api = async (path, init = {}) => {
+const request = async (path, init = {}) => {
   const { backendUrl, password } = await getSettings()
   if (!backendUrl) throw new ApiError('Backend URL is not set (extension options)', 'config')
   const headers = { 'Content-Type': 'application/json', ...(password ? { Authorization: 'Basic ' + btoa('user:' + password) } : {}) }
@@ -59,5 +67,8 @@ export const api = async (path, init = {}) => {
     }
     throw new ApiError(message, res.status === 401 ? 'auth' : 'http')
   }
-  return res.json()
+  return res
 }
+
+export const api = async (path, init) => (await request(path, init)).json()
+export const apiBytes = async (path) => new Uint8Array(await (await request(path)).arrayBuffer())
