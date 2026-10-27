@@ -239,21 +239,52 @@ keep a backend with any number of clients cheap for it. Read this before you add
   a minute apart to measure a change. Without any client the counter must not move.
 - Client side: a hidden tab does not poll, and the Android service rests while the app is in front. Keep new polls consistent with that.
 
+## Distributing the extension and the app
+
+The backend ships both clients, so the web UI (Settings > Browser extension / App) can offer them and they can update themselves.
+
+**Browser extension** (`backend/src/extension.ts`). The image contains `extension/` (`Dockerfile`). `ExtensionBundle.loadAll` reads it once at start,
+one package per browser kind in `EXTENSION_TARGETS` (`chromium`, `firefox`): same files, own manifest. A new browser is a new entry there plus a card
+(`guides`) in `BrowserExtensionSettings.vue`.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/extension` | Targets (`id`, `label`, `ext`, `state`) and the version |
+| `GET /api/extension/:target` | Version and file list (path, size, sha256) for the update check |
+| `GET /api/extension/:target/file?path=…` | One file, for the self-update |
+| `GET /api/extension/:target/extension.zip` | ZIP for the first installation (not Firefox) |
+| `GET /api/extension/firefox/extension.xpi`, `…/updates.json` | The package signed by Mozilla, and what Firefox asks for updates |
+
+- **Raise `version` in `extension/manifest.json` with every change.** The self-update compares it, and AMO signs a version only once. Rebuild the app
+  container afterwards (the extension is part of the image).
+- Self-update (`extension/update.js`): the options page writes the changed files into the folder the extension is loaded from (File System Access API,
+  folder picked once, kept in IndexedDB) and reloads it. Chromium only.
+- Firefox (`backend/src/firefox.ts`) needs `PUBLIC_URL` (https) and `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` (see `.env.example`); without them no Firefox package
+  is offered. The backend uploads the package as unlisted, waits for the signature and keeps the signed file in the data folder. The add-on id
+  belongs to one AMO account, so each installation has its own (`EXTENSION_FIREFOX_ID`, else made once in the data folder). Not yet verified on a real Firefox.
+- The routes under `/api/extension` and `/api/app` are not counted as a client (`activity.ts`).
+
+**Android app.** `/api/app` returns `{ available, size, built, versionCode, versionName, sha256 }` (the last three from the JSON `build.sh` writes next to the APK),
+`/api/app/my-own-jdownloader.apk` the file. The APK folder is `/app/apk` in the container (`compose.yaml`: `./android/dist`).
+
 ## Android app
 
 `android/` is a small Kotlin app (no libraries, minSdk 30) around the web UI. A phone browser has no extensions, so the app solves token
 captchas, notifies, answers Click'n'Load, takes shared links and can lock itself. Nothing is installed on the host: it is built in a container.
 
 ```sh
-docker build -t myjd-android android/
-docker run --rm --user 1000:1000 -v "$PWD/android":/project -v myjd-android-home:/home/builder myjd-android gradle --no-daemon -q assembleDebug
-# -> android/app/build/outputs/apk/debug/app-debug.apk
+android/build.sh
+# -> android/dist/my-own-jdownloader.apk (+ .json with version code and SHA-256)
 ```
+
+`build.sh` runs the build container and passes `-PversionCode` (minutes since 1970, so each build is newer than the one before). The backend
+offers `android/dist/` (mounted into the app container, no rebuild needed for a new APK) and the app updates itself from it, see "Distributing the
+extension and the app". Without the script the build is `docker run … gradle --no-daemon -q assembleDebug` in the image of `android/Dockerfile`.
 
 The volume `myjd-android-home` holds the Gradle cache **and the debug signing key**: without it every build is signed with a new key and
 cannot update the installed app (the data would be lost with an uninstall). `ANDROID_USER_HOME` in the `Dockerfile` points there. `adb` is
 in the same image (`/opt/android-sdk/platform-tools`): wireless debugging needs `adb pair` once, then `adb connect <ip>:<port>` (the port changes
-whenever wireless debugging restarts), and updates go with `adb install -r`. Changes to the web UI also need `docker compose up -d --build app`:
+whenever wireless debugging restarts); `adb install -r` still works for a phone that cannot reach the backend. Changes to the web UI also need `docker compose up -d --build app`:
 the app only shows what the backend serves.
 
 | File (`android/app/src/main/java/de/bennyborn/myjd/`) | Job |
@@ -267,6 +298,7 @@ the app only shows what the backend serves.
 | `CnlServer.kt`, `ChooseDeviceActivity.kt`, `ShareActivity.kt` | Click'n'Load on `127.0.0.1:9666`, the "share" target, the device choice for both |
 | `Lock.kt` | App lock (`GuardedActivity` is the base class of every screen, `LockActivity`) |
 | `BootReceiver.kt` | Starts the service after a restart |
+| `Updater.kt` | Self-update: asks `/api/app`, downloads the APK, checks the SHA-256, hands it to Android's installer (`UpdateReceiver` gets the result); state is announced as `android-state` |
 
 **The bridge.** The page gets `window.Android`; its typed shape is `frontend/src/appBridge.ts`, the implementation `UiBridge` in `MainActivity.kt`.
 Every method first checks that the page comes from the backend's own address (`trusted()`); other sites never load in this WebView (they open

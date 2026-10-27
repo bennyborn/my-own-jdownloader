@@ -15,7 +15,7 @@ dem MyJDownloader-Dienst. Unser Projekt spricht dessen öffentliche API an.
 - **Backend nötig**, weil: Requests sind AES-128-CBC-verschlüsselt und HMAC-SHA256-signiert,
   Sessions laufen ab (Reconnect), CORS blockiert vermutlich den direkten Browser-Zugriff,
   die API hat kein Push (das Backend pollt und reicht per SSE weiter).
-- **Browser-Extension** (`extension/`, Manifest V3, derzeit nur Chrome) für alles, was im Browser des Nutzers
+- **Browser-Extension** (`extension/`, Manifest V3, Chrome und Edge; das Firefox-Paket ist gebaut, aber noch nicht abgenommen) für alles, was im Browser des Nutzers
   passieren muss: Captchas auf der Hoster-Seite lösen, Click'n'Load, Benachrichtigungen, Überblick im Popup.
 - **Nächster großer Meilenstein: Weg B, Direktverbindung zum JDownloader** (gleiches Protokoll, die Datenaufrufe gehen im LAN direkt
   zum Gerät; siehe den Abschnitt „Nächster Meilenstein“). Weg C (eigener MyJD-Server) bleibt optional und nur sinnvoll, wenn die
@@ -53,8 +53,9 @@ Android-App (WebView der UI + Dienst) <--REST/SSE--> Backend
 | 6 | Docker/Deployment | Container, Login-Schutz, Doku | Container, Login-Schutz und Entwickler-Doku (`DEVELOPER.md`) fertig, Nutzer-Doku offen |
 | – | Plugins, MCP | siehe unten | umgesetzt |
 | – | Captcha | siehe unten | umgesetzt |
-| – | Click'n'Load, Extension | siehe unten | umgesetzt (Chrome) |
+| – | Click'n'Load, Extension | siehe unten | umgesetzt (Chrome; Firefox gebaut, ungeprüft) |
 | – | Android-App | siehe unten | umgesetzt, Teile noch nicht abgenommen |
+| – | Extension und App verteilen | siehe unten | umgesetzt, Firefox ungeprüft |
 | – | MyJD-API schonen | siehe unten | umgesetzt |
 | 7 | **Direktverbindung** | siehe unten | **nächster Meilenstein** |
 
@@ -110,7 +111,7 @@ ist das nicht möglich, weil der Token an die Domain des Hosters gebunden ist.
 - **Eintragung in JD:** nur wenn `JD_SOLVER_URL` gesetzt ist (Adresse, unter der JD das Backend erreicht, in der `.env`).
   Pro Gerät liegen die vorherigen Werte in `data/solver-<Geräte-ID>.json` im Volume (das Standardgerät übernimmt eine alte `data/solver.json`), `backend/src/solver-restore.ts [Gerätename ...]` setzt sie zurück. JD setzt sich dabei nicht auf eine fremde Anti-Captcha-Einrichtung (ein eigener aktiver Dienst bleibt unberührt).
 - **Grenzen:** Tasks aus dem Anti-Captcha-Endpunkt liegen nur im Speicher (Neustart = weg), JDs Wartezeit auf den Token
-  ist unbekannt, reCAPTCHA v3 ist nicht abgedeckt, Firefox braucht ein eigenes Manifest (`background.scripts`).
+  ist unbekannt, reCAPTCHA v3 ist nicht abgedeckt. Firefox bekommt sein eigenes Manifest (siehe „Extension und App verteilen“).
 
 ## Click'n'Load (umgesetzt, Chrome, mit Filecrypt getestet)
 
@@ -171,9 +172,30 @@ höchstens wieder ein WebView auf dieselbe UI. Der Remote-Browser im Container b
 - **Web-UI auf dem Handy:** Settings als Liste mit Detailseite (Zurück-Taste und Pfeil führen zur Liste), einklappbare Gruppen mit
   Zählbox, Schalter statt Häkchen, Werte in der Zeile des Namens; Platzhalter `LoadingState`; Dialoge mit Blur, Rauschen gegen
   Banding und Einblend-Effekt; Auswahlfelder mit demselben Chevron wie die grafischen Dropdowns.
-- **Grenzen:** nur Android, nur per Sideload (der Debug-Schlüssel liegt im Docker-Volume `myjd-android-home`, Updates mit
-  `adb install -r`). Noch nicht auf dem Gerät abgenommen: Click'n'Load samt Chromes Abfrage zum lokalen Netzwerk, Teilen, „Ask
+- **Update:** die App holt die APK vom Backend (siehe „Extension und App verteilen“).
+- **Grenzen:** nur Android, nur per Sideload (der Debug-Schlüssel liegt im Docker-Volume `myjd-android-home`). Noch nicht auf dem Gerät abgenommen: Click'n'Load samt Chromes Abfrage zum lokalen Netzwerk, Teilen, „Ask
   every time“, Start nach dem Booten. Die Akku-Optimierung mancher Hersteller kann den Dienst beenden.
+
+## Extension und App verteilen (umgesetzt)
+
+Das Backend liefert die Browser-Extension und die Android-App selbst aus und hält sie aktuell; Einstellungen > „Browser extension / App“
+(`BrowserExtensionSettings.vue`) ist die Anlaufstelle für die Erstinstallation.
+
+- **Extension** (`backend/src/extension.ts`): Das Image enthält den Ordner `extension/`. Pro Browser-Art ein Paket (`EXTENSION_TARGETS`: `chromium`
+  und `firefox`), alle aus demselben Ordner, sie unterscheiden sich nur im Manifest. `GET /api/extension` nennt Ziele und Version,
+  `/api/extension/:target` die Dateiliste mit Prüfsummen, `/file?path=` einzelne Dateien, `/extension.zip` das ZIP für die Erstinstallation.
+  Die Version steht in `extension/manifest.json` und muss mit jeder Änderung steigen (der Vergleich der Extension und AMO hängen daran).
+- **Selbst-Update der Extension** (`extension/update.js`, Optionsseite): „Check for updates“ / „Update to x“ schreibt die geänderten Dateien in
+  den Ordner, aus dem die Extension geladen ist (File System Access API, der Ordner wird einmal gewählt), und lädt sie neu. Nur Chromium.
+- **Firefox** (`backend/src/firefox.ts`): Release-Firefox installiert nur von Mozilla Signiertes. Jede Installation signiert für sich: Mit
+  `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` und `PUBLIC_URL` (https, nur darüber aktualisiert Firefox) schickt das Backend sein Paket als *unlisted*
+  an addons.mozilla.org und liefert die signierte XPI samt `updates.json` aus. Die Add-on-ID ist pro Installation eigen (einmal erzeugt im
+  Datenordner, oder `EXTENSION_FIREFOX_ID`). **Gebaut, aber nie auf einem echten Firefox geprüft.** Ohne `PUBLIC_URL` gibt es kein Firefox-Paket.
+- **App** (`/api/app`, `/api/app/my-own-jdownloader.apk`): `android/build.sh` baut die APK in den Ordner `android/dist/` (mit wachsendem `versionCode`,
+  Minuten seit 1970) und schreibt Version und SHA-256 daneben. Der Ordner ist in den App-Container eingebunden, ein neuer Build braucht keinen
+  neuen Container. Die App (`Updater.kt`) fragt beim Start und per Knopf (Einstellungen > App update), lädt die APK, prüft die Prüfsumme und
+  übergibt sie dem Installer von Android, der einmal nachfragt. Keine Timer. Ohne APK im Ordner wird nichts angeboten.
+- Die Aufrufe unter `/api/extension` und `/api/app` zählen nicht als Client (siehe `activity.ts`).
 
 ## MyJD-API schonen (umgesetzt)
 
@@ -258,6 +280,7 @@ und dann nur in einem abgeschotteten Netz.
   - Extensions (Einstellungen > Extensions, `extensions.ts`): an/aus, installieren (JD schließt die Installation erst nach einem Neustart ab, das UI bietet ihn an,
     die Erweiterung ist danach aus), die Optionen jeder installierten Erweiterung aufklappbar (`/api/extensions/config`). Die Einstellungen des Archive Extractor
     gibt es nur noch dort; FFmpeg liegt jetzt unter Downloads.
+  - Extension und App verteilen (siehe oben): ZIP / XPI zum Herunterladen, Selbst-Update der Extension, Update der Android-App aus dem Backend.
   - Update und Neustart zeigen einen Hinweis mit Spinner bis das Gerät wieder da ist (`updateWatch.ts`; erkennt den Neustart über JDs Laufzeit, weil die Online-Anzeige
     der Geräteliste einen schnellen Neustart verpasst); der gelbe Update-Button ist dabei gesperrt und dreht sich. Hinweise (Toasts) stehen am Handy oben, gleiche Fehler nur einmal.
 - **Offen:** der Meilenstein Direktverbindung, die Lücken unter TODO und die Nutzer-Doku (Phase 6).
@@ -290,14 +313,14 @@ und dann nur in einem abgeschotteten Netz.
 - Web UI notifications only work over https or on localhost (not on `http://server:port`); document it, or put the UI behind a
   reverse proxy with a certificate. The extension's and the Android app's notifications work everywhere. Without https a browser
   also cannot install the UI as an app (no PWA install); the Android app replaces that.
-- Browser extension: Firefox manifest (`background.scripts` instead of `service_worker`); revise the design of the captcha page.
+- Browser extension: verify the Firefox package on a real Firefox (AMO signing, install, update over https); revise the design of the captcha page.
 - Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
 - Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
 - Mobile follow-ups: expert settings behind a "Show advanced" switch (JD's "General" page has 75 entries; needs a rule for what counts
   as expert, e.g. values in ms or bytes); the speed graph runs behind the ETA text in the status bar when the curve is high; closing a dialog
   is not animated (opening is).
 - Android app, to confirm on the phone: Click'n'Load (incl. Chrome's local network prompt), share, "ask every time" chooser, app
-  lock, start after boot, file picker, manufacturer battery limits. Ideas: release signing instead of the debug key, an update check,
+  lock, start after boot, file picker, manufacturer battery limits. Ideas: release signing instead of the debug key,
   hCaptcha / reCAPTCHA test (the chain was only tried with Turnstile), the modern back handling instead of `onBackPressed`.
 - Show "open connections" metric in the status bar (API call still unknown).
 - Resolve more plugin-internal URLs (only YouTube has been checked).
@@ -320,5 +343,8 @@ und dann nur in einem abgeschotteten Netz.
     (switch, install with restart, options), the toasts at the top on a phone, the update notice and spinner button (2026-10-27)
   - [x] "Check online status": in the linkgrabber it answers with the counts (online / offline / unknown); in the downloads list the call
     returns nothing, a gone link shows "File not found" in JD's status anyway
+  - [ ] Android app update on the phone (check, download, system installer, version after the update)
+  - [ ] Chromium extension: first installation from the ZIP, self-update into the chosen folder
+  - [ ] Firefox: signing with AMO keys, installation, update over https
   - [ ] Web UI notifications over https
   - [ ] Set `UI_PASSWORD` and check logo, manifest, icons and the Anti-Captcha endpoints still work
