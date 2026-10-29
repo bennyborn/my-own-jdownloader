@@ -198,7 +198,7 @@ export class JdConfig {
         if (!EXCLUDED.some((re) => re.test(e.interfaceName))) reportOnce(e.interfaceName, `unknown interface ${e.interfaceName}, not shown (add it to CATEGORIES or EXCLUDED in jdconfig.ts)`)
         continue
       }
-      if (!KNOWN_TYPES.has(e.abstractType)) reportOnce(`${e.abstractType}`, `unknown value type ${e.abstractType} (${e.interfaceName}.${e.key}), shown as JSON (see DEVELOPER.md, "JDownloader settings")`)
+      if (!KNOWN_TYPES.has(e.abstractType)) reportOnce(`${e.abstractType}`, `unknown value type ${e.abstractType} (${e.interfaceName}.${e.key}), shown as JSON (see docs/DEVELOPER.md, "JDownloader settings")`)
       const key = `${e.interfaceName}\0${e.storage ?? ''}`
       let group = groups.get(key)
       if (!group) {

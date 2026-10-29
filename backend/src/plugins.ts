@@ -23,7 +23,7 @@ interface Manifest {
   name: string
   description?: string
   version?: string
-  // File in the plugin folder with the plugin's part of the web UI (an ES module, see DEVELOPER.md).
+  // File in the plugin folder with the plugin's part of the web UI (an ES module, see docs/DEVELOPER.md).
   ui?: string
   settings: SettingDef[]
 }

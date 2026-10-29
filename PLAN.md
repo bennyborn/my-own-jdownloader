@@ -50,7 +50,7 @@ Android-App (WebView der UI + Dienst) <--REST/SSE--> Backend
 | 3 | Basis-UI (MVP) | Downloadliste mit Paketen, Geschwindigkeit, Fortschritt, Umsortieren | fertig |
 | 4 | Linkgrabber | Links einfügen, Pakete prüfen, in Downloads verschieben | fertig |
 | 5 | Extras | Einstellungen, mehrere Geräte, Mobilansicht | Einstellungen, Konten, mehrere Geräte und Mobilansicht fertig; Regel-Editoren offen |
-| 6 | Docker/Deployment | Container, Login-Schutz, Doku | Container, Login-Schutz und Entwickler-Doku (`DEVELOPER.md`) fertig, Nutzer-Doku offen |
+| 6 | Docker/Deployment | Container, Login-Schutz, Doku | Container, Login-Schutz und Entwickler-Doku (`docs/DEVELOPER.md`) fertig, Nutzer-Doku offen |
 | – | Plugins, MCP | siehe unten | umgesetzt |
 | – | Captcha | siehe unten | umgesetzt |
 | – | Click'n'Load, Extension | siehe unten | umgesetzt (Chrome; Firefox gebaut, ungeprüft) |
@@ -129,11 +129,11 @@ Die Browser-Extension übernimmt, was Websites an "einen JDownloader auf diesem 
 
 - **Einstellungen** (`SettingsView.vue`): Seite "JDownloader" wird aus `/config/list` des Geräts erzeugt (`jdconfig.ts`), schreibt
   mit `/config/set` und `/config/reset`, Geheimnisse gehen nie ans UI. Pro Hoster/Plugin eine eigene, durchsuchbare Seite (`HosterSettings.vue`).
-  Details in `DEVELOPER.md`.
+  Details in `docs/DEVELOPER.md`.
 - **Konten** (`accounts.ts`, `AccountSettings.vue`): Premium-Konten pro Gerät über `/accountsV2` (Liste, hinzufügen, entfernen,
   an/aus, Status, Restlaufzeit und Traffic). Passwörter gehen nur zum Gerät.
 - **Plugins** (`plugins.ts`, `plugins/`): vertrauter Code in einem Ordner, Backend-Teil plus Vue-Komponente für feste Blöcke
-  im UI. Beispiele: `tmdb-poster` (Poster am Paket), `youtube-thumbnail`. Siehe `DEVELOPER.md`.
+  im UI. Beispiele: `tmdb-poster` (Poster am Paket), `youtube-thumbnail`. Siehe `docs/DEVELOPER.md`.
 - **MCP-Server** (`mcp.ts`, `mcplog.ts`) auf `/mcp`: dieselben Dienste für einen Assistenten, Einstellungen werden gesucht statt gelistet.
   Schreibende Tools nur mit `MCP_WRITE=true` (oder Schalter auf der Einstellungsseite), nichts zum Stoppen/Pausieren/Löschen von Downloads.
   Aufrufe lassen sich auf der Einstellungsseite mitschneiden.

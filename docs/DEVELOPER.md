@@ -1,5 +1,25 @@
 # Developer guide
 
+## Contents
+
+- [Plugins](#plugins)
+  - [Where plugins live](#where-plugins-live)
+  - [Manifest (`plugin.json`)](#manifest-pluginjson)
+  - [Backend part (`index.js`)](#backend-part-indexjs)
+  - [UI part (`ui.js`)](#ui-part-uijs)
+  - [What the host does for you](#what-the-host-does-for-you)
+  - [HTTP API (used by the UI)](#http-api-used-by-the-ui)
+  - [Frontend (core)](#frontend-core)
+  - [Writing a new plugin: checklist](#writing-a-new-plugin-checklist)
+  - [The `tmdb-poster` plugin](#the-tmdb-poster-plugin)
+- [JDownloader settings](#jdownloader-settings)
+  - [What to do when JDownloader brings something new](#what-to-do-when-jdownloader-brings-something-new)
+- [MCP server](#mcp-server)
+- [Talking to the MyJDownloader API](#talking-to-the-myjdownloader-api)
+- [Distributing the extension and the app](#distributing-the-extension-and-the-app)
+- [Android app](#android-app)
+- [Development](#development)
+
 ## Plugins
 
 Plugins extend the web UI. The core knows nothing about what a plugin shows: it only defines **blocks** in its
@@ -296,7 +316,7 @@ in the same image (`/opt/android-sdk/platform-tools`): wireless debugging needs 
 whenever wireless debugging restarts); `adb install -r` still works for a phone that cannot reach the backend. Changes to the web UI also need `docker compose up -d --build app`:
 the app only shows what the backend serves.
 
-| File (`android/app/src/main/java/de/bennyborn/myjd/`) | Job |
+| File (`android/app/src/main/java/app/myownjd/`) | Job |
 | --- | --- |
 | `Config.kt`, `Api.kt` | Settings kept on the phone (address, password, switches); blocking calls to the backend with Basic auth |
 | `Ui.kt`, `Ambient.kt` | View helpers (screens are built in code): `configureForApp` (WebViews), `addBrand`, `ambientScreen`; the drifting background |

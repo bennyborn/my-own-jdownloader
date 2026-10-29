@@ -9,13 +9,19 @@
   Your own web UI for <a href="https://jdownloader.org">JDownloader</a>: one small container, your data stays with you.
 </p>
 
+<br>
+<br>
+
 <p align="center">
-  <img src="docs/screenshot-desktop.png" alt="Download list on the desktop" height="440">
+  <a href="docs/screenshot-desktop.png"><img src="docs/screenshot-desktop.png" alt="Download list on the desktop" height="400"></a>
   &nbsp;
-  <img src="docs/screenshot-mobile.png" alt="Download list on a phone" height="440">
+  <a href="docs/screenshot-mobile.png"><img src="docs/screenshot-mobile.png" alt="Download list on a phone" height="400"></a>
   &nbsp;
-  <img src="docs/screenshot-captcha.png" alt="Solving a Turnstile captcha on a phone" height="440">
+  <a href="docs/screenshot-captcha.png"><img src="docs/screenshot-captcha.png" alt="Solving a Turnstile captcha on a phone" height="400"></a>
 </p>
+
+<br>
+<br>
 
 The official MyJDownloader web page is a hosted service that every call has to travel through. My Own JDownloader runs on your side and
 replaces it with something quicker and more current: a live UI that only moves when something changes, a direct line to your JDownloader
@@ -130,7 +136,7 @@ docker compose run --rm dev npm run build
 ```
 
 The backend is Fastify (TypeScript), the frontend Vue 3 with Vite. How plugins, the JDownloader settings page, the MyJDownloader client, the live
-stream and the clients are built is in [DEVELOPER.md](DEVELOPER.md). A short guide to writing a plugin is there too.
+stream and the clients are built is in [DEVELOPER.md](docs/DEVELOPER.md). A short guide to writing a plugin is there too.
 
 ## Notes
 
