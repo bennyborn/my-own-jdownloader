@@ -117,54 +117,111 @@ const openCaptcha = async (id, device, active = true) => {
 // captcha widget on it. It still runs on the hoster's domain (the token is bound to it), but nothing of
 // the original page stays visible. Styles go through a constructable stylesheet because page CSPs
 // may forbid <style> elements.
-const renderInPage = (job) => {
+const renderInPage = (job, logoSvg) => {
   const sheet = new CSSStyleSheet()
   sheet.replaceSync(`
-    :root { color-scheme: light dark; --bg: #f6f8fa; --card: #fff; --text: #1f2328; --muted: #59636e; --border: #d0d7de; --accent: #10ac84; --err: #d14343; }
+    :root { color-scheme: light dark; --bg: #f6f8fa; --card: #fff; --text: #1f2328; --muted: #59636e; --border: #d0d7de; --accent: #10ac84; --err: #d14343; --hover: rgba(127, 127, 127, 0.1); }
     @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --card: #161b22; --text: #e6edf3; --muted: #8b949e; --border: #30363d; } }
     html, body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, sans-serif; }
     body { display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
-    .card { display: grid; justify-items: center; gap: 14px; width: min(360px, 100%); padding: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12); text-align: center; }
-    h1 { margin: 0; font-size: 1.1rem; }
-    .muted { color: var(--muted); font-size: 0.85rem; }
-    .status { min-height: 1.2em; font-size: 0.85rem; color: var(--muted); }
+    .card { display: grid; justify-items: center; gap: 16px; width: min(380px, 100%); padding: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12); text-align: center; box-sizing: border-box; }
+    .logo { width: 60px; }
+    .logo svg { display: block; width: 100%; height: auto; }
+    h1 { margin: 0; font-size: 1.2rem; }
+    .meta { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 0.85rem; }
+    .meta > span { display: inline-flex; align-items: center; gap: 6px; }
+    .meta img { width: 16px; height: 16px; border-radius: 3px; }
+    .meta svg { flex: none; }
+    .host { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+    .left { font-variant-numeric: tabular-nums; }
+    .left.low { color: var(--err); }
+    .widget { display: grid; justify-items: center; min-height: 78px; align-content: center; }
+    .status { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 1.3em; font-size: 0.85rem; color: var(--muted); }
     .status.err { color: var(--err); }
-    .status.ok { color: var(--accent); }
+    .status.ok { color: var(--accent); font-weight: 600; }
+    .done .widget { display: none; }
+    .hint { font-size: 0.75rem; color: var(--muted); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
   `)
   document.adoptedStyleSheets = [sheet]
 
-  const card = document.createElement('div')
-  card.className = 'card'
-  const title = document.createElement('h1')
-  title.textContent = 'JDownloader needs a captcha'
-  const sub = document.createElement('div')
-  sub.className = 'muted'
-  sub.textContent = job.hoster
-  const widget = document.createElement('div')
-  const status = document.createElement('div')
-  status.className = 'status'
-  card.append(title, sub, widget, status)
-  const head = document.createElement('head')
-  const meta = document.createElement('meta')
-  meta.name = 'viewport'
-  meta.content = 'width=device-width, initial-scale=1'
-  head.append(meta)
-  const body = document.createElement('body')
-  body.append(card)
-  document.documentElement.replaceChildren(head, body)
+  const el = (tag, props = {}, ...children) => {
+    const node = Object.assign(document.createElement(tag), props)
+    node.append(...children)
+    return node
+  }
+  // Small Lucide icons (ISC license), built through the DOM because page CSPs may restrict innerHTML.
+  const svg = (paths, size = 14) => {
+    const root = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    for (const [k, v] of Object.entries({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) root.setAttribute(k, v)
+    for (const d of paths) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', d.startsWith('circle') ? 'circle' : 'path')
+      if (d.startsWith('circle')) for (const [k, v] of Object.entries({ cx: 12, cy: 12, r: 10 })) path.setAttribute(k, v)
+      else path.setAttribute('d', d)
+      root.append(path)
+    }
+    return root
+  }
+  const clock = () => svg(['circle', 'M12 6v6l4 2'])
+  const check = () => svg(['circle', 'm9 12 2 2 4-4'], 16)
+  const alert = () => svg(['circle', 'M12 8v4', 'M12 16h.01'], 16)
+  const loader = () => {
+    const node = svg(['M21 12a9 9 0 1 1-6.219-8.56'], 16)
+    node.setAttribute('class', 'spin')
+    return node
+  }
+
+  // The hoster's own icon (same origin, so no request leaves the hoster's domain); hidden when there is none.
+  const favicon = el('img', { alt: '', src: '/favicon.ico', onerror: () => favicon.remove() })
+  const timeText = el('span', { className: 'left' })
+  const left = el('span', { title: 'Time left to answer' }, clock(), timeText)
+  const widget = el('div', { className: 'widget' })
+  const status = el('div', { className: 'status' })
+  // The logo comes as text (the page cannot reach the extension's files); parsed, not injected as HTML, because of page CSPs.
+  const logo = el('div', { className: 'logo' })
+  try {
+    const node = new DOMParser().parseFromString(logoSvg, 'image/svg+xml').documentElement
+    node.removeAttribute('width')
+    node.removeAttribute('height')
+    logo.append(document.importNode(node, true))
+  } catch {
+    /* the page works without it */
+  }
+  const card = el(
+    'div',
+    { className: 'card' },
+    logo,
+    el('h1', { textContent: 'Solve the captcha' }),
+    el('div', { className: 'meta' }, el('span', {}, favicon, el('span', { className: 'host', textContent: job.hoster })), left),
+    widget,
+    status,
+    el('div', { className: 'hint', textContent: 'This tab closes by itself once JDownloader has the answer.' })
+  )
+  const head = el('head', {}, el('meta', { name: 'viewport', content: 'width=device-width, initial-scale=1' }))
+  document.documentElement.replaceChildren(head, el('body', {}, card))
   document.documentElement.style.cssText = '' // un-hide (set by the content script)
   document.title = `Captcha · ${job.hoster}`
 
+  // The countdown runs on the time JD reported when the page was opened.
+  const deadline = Date.now() + (job.remaining ?? 0)
+  const tick = () => {
+    const ms = Math.max(0, deadline - Date.now())
+    const total = Math.floor(ms / 1000)
+    timeText.textContent = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+    left.classList.toggle('low', ms < 60000)
+    if (ms === 0) clearInterval(timer)
+  }
+  const timer = job.remaining > 0 ? setInterval(tick, 1000) : undefined
+  if (timer) tick()
+  else left.hidden = true
+
   const say = (text, kind = '') => {
-    status.textContent = text
     status.className = `status ${kind}`
+    status.replaceChildren(...(kind === 'ok' ? [check()] : kind === 'err' ? [alert()] : text === 'Sending…' ? [loader()] : []), text)
+    card.classList.toggle('done', kind === 'ok')
   }
   const kind = /turnstile|cloudflare/i.test(job.challengeType) ? 'turnstile' : /hcaptcha/i.test(job.challengeType) ? 'hcaptcha' : /recaptcha/i.test(job.challengeType) ? 'recaptcha' : null
-  const debug = document.createElement('div')
-  debug.className = 'muted'
-  debug.style.fontSize = '0.7rem'
-  debug.textContent = `${job.challengeType} · ${kind ?? 'unsupported'} · key ${job.siteKey.slice(0, 8)}…`
-  card.append(debug)
   console.log('[myjd-captcha] job', job)
   if (!kind) {
     say(`Unsupported captcha type: ${job.challengeType}`, 'err')
@@ -284,7 +341,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.type === 'render' && sender.tab?.id) {
       const job = await api(withDevice(`/api/captcha/${msg.id}`, msg.device))
-      await chrome.scripting.executeScript({ target: { tabId: sender.tab.id }, world: 'MAIN', func: renderInPage, args: [job] })
+      const logoSvg = await (await fetch(chrome.runtime.getURL('logo-outline.svg'))).text()
+      await chrome.scripting.executeScript({ target: { tabId: sender.tab.id }, world: 'MAIN', func: renderInPage, args: [job, logoSvg] })
       return { ok: true }
     }
     if (msg.type === 'solve') {

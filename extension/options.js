@@ -94,15 +94,10 @@ const showUpdate = (version) => {
   updateButton.textContent = version ? `Update to ${version}` : 'Check for updates'
 }
 void (async () => {
-  const { localVersion, checkForUpdate, applyUpdate, canSelfUpdate, isFirefox, packageUrl } = await import('./update.js')
+  const { localVersion, checkForUpdate, applyUpdate, canSelfUpdate, isFirefox } = await import('./update.js')
   document.getElementById('version').textContent = localVersion()
   const { update } = await chrome.storage.local.get('update')
   const { backendUrl } = await (await import('./api.js')).getSettings()
-  if (backendUrl) {
-    const zip = document.getElementById('zip')
-    zip.href = packageUrl(backendUrl)
-    zip.hidden = false
-  }
   showUpdate(update ?? null)
   if (update) say(`Version ${update} is available.`)
   updateButton.addEventListener('click', async () => {

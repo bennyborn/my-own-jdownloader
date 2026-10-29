@@ -19,6 +19,7 @@
   input, select { padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; }
   input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
   .field { display: grid; gap: 6px; font-weight: 600; font-size: 0.85rem; }
+  .field[hidden] { display: none; }
   .field small { font-weight: 400; color: var(--muted); }
   .dd { position: relative; }
   .dd-trigger { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-weight: 400; text-align: left; }
@@ -67,7 +68,6 @@
     <div class="field">
       <span>Extension version <small id="version"></small></span>
       <div class="actions"><button type="button" id="update" class="secondary">Check for updates</button><span id="updatemsg"></span></div>
-      <small>Updates come from the backend and use the saved URL. <a id="zip" hidden>Download as ZIP</a></small>
     </div>
   </div>
 </main>
