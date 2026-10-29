@@ -1,5 +1,6 @@
 import { chromium } from 'playwright'
 import { writeFileSync } from 'node:fs'
+import { frameImage } from './frame.mjs'
 
 const base = 'http://host.docker.internal:20031'
 const auth = 'Basic ' + Buffer.from('x:' + process.env.UI_PASSWORD).toString('base64')
@@ -7,6 +8,8 @@ const MB = 1024 * 1024
 const GB = 1024 * MB
 const DEV = 'demo'
 const MOVIE = '2001: A Space Odyssey (1968) [tmdbid=62]'
+// A new id per run: the app keeps plugin answers for a day and deletes posters of packages it does not know, so an old answer can point to a poster that is gone.
+const MOVIE_UUID = 100000 + Math.floor(Math.random() * 900000)
 const VIDEO_ID = '9bZkp7q19f0'
 const VIDEO_TITLE = 'PSY - GANGNAM STYLE(강남스타일) M/V'
 
@@ -22,14 +25,14 @@ const movieLinks = [
   link({ uuid: 105, name: '2001.A.Space.Odyssey.1968.1080p.BluRay.x264.part5.rar', host: 'rapidgator.net', bytesTotal: 0.4 * GB, status: 'Waiting' })
 ]
 const packages = [
-  pkg({ uuid: 1, name: MOVIE, saveTo: '/downloads/Movies', running: true, speed: 31.5 * MB, bytesTotal: 8.8 * GB, bytesLoaded: 6.1 * GB, eta: 90, childCount: 5, hosts: ['rapidgator.net', 'ddownload.com', 'nitroflare.com', '1fichier.com'], activeHosts: ['nitroflare.com', '1fichier.com'] }),
+  pkg({ uuid: MOVIE_UUID, name: MOVIE, saveTo: '/downloads/Movies', running: true, speed: 31.5 * MB, bytesTotal: 8.8 * GB, bytesLoaded: 6.1 * GB, eta: 90, childCount: 5, hosts: ['rapidgator.net', 'ddownload.com', 'nitroflare.com', '1fichier.com'], activeHosts: ['nitroflare.com', '1fichier.com'] }),
   pkg({ uuid: 2, name: VIDEO_TITLE, saveTo: '/downloads/YouTube', running: true, speed: 14.2 * MB, bytesTotal: 0.46 * GB, bytesLoaded: 0.24 * GB, eta: 16, childCount: 1, hosts: ['youtube.com'], activeHosts: ['youtube.com'] }),
   pkg({ uuid: 3, name: 'ubuntu-24.04.1-desktop-amd64', saveTo: '/downloads/ISOs', running: true, speed: 13.3 * MB, bytesTotal: 6.2 * GB, bytesLoaded: 1.4 * GB, eta: 370, childCount: 1, hosts: ['mega.nz'], activeHosts: ['mega.nz'] }),
   pkg({ uuid: 4, name: 'Sintel.2010.2160p.WEB-DL.x265', saveTo: '/downloads/Movies', finished: true, extraction: 'running', status: 'Extracting', bytesTotal: 3.4 * GB, bytesLoaded: 3.4 * GB, childCount: 4, hosts: ['ddownload.com'] }),
   pkg({ uuid: 5, name: 'Tears.of.Steel.2012.1080p.BluRay', saveTo: '/downloads/Movies', bytesTotal: 5.1 * GB, childCount: 3, hosts: ['ddownload.com', 'nitroflare.com'] }),
   pkg({ uuid: 6, name: 'Big.Buck.Bunny.2008.1080p', saveTo: '/downloads/Movies', finished: true, extraction: 'done', bytesTotal: 1.1 * GB, bytesLoaded: 1.1 * GB, childCount: 2, hosts: ['rapidgator.net'] })
 ]
-const linksOf = { 1: movieLinks }
+const linksOf = { [MOVIE_UUID]: movieLinks }
 
 // A speed curve that looks lived in: a ramp up, a hoster that slows down for a while, some noise.
 const speedAt = (age) => {
@@ -133,6 +136,7 @@ for (const [name, options] of shots) {
   if (options.expand !== false) await page.getByText('2001: A Space Odyssey').first().locator('xpath=ancestor::*[contains(@class,"card") or self::article][1]').locator('button').first().click().catch((e) => console.log('expand failed', e.message))
   await page.waitForTimeout(1500)
   await page.screenshot({ path: `/shots/work/${name}.png` })
+  await frameImage(browser, `/shots/work/${name}.png`)
   await context.close()
 }
 await browser.close()

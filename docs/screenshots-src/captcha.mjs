@@ -1,5 +1,6 @@
 import { chromium } from 'playwright'
 import { readFileSync } from 'node:fs'
+import { frameImage } from './frame.mjs'
 
 const source = readFileSync('/shots/ext/background.js', 'utf8')
 const start = source.indexOf('const renderInPage = ')
@@ -37,4 +38,5 @@ await page.evaluate(`(${fn})(${JSON.stringify(job)}, ${JSON.stringify(logo)})`)
 const wait = Number(process.argv[2] ?? 1500)
 await page.waitForTimeout(wait)
 await page.screenshot({ path: `/shots/work/captcha.png` })
+await frameImage(browser, '/shots/work/captcha.png')
 await browser.close()
