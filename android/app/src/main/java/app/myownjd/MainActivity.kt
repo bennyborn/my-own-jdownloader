@@ -1,4 +1,4 @@
-package de.bennyborn.myjd
+package app.myownjd
 
 import android.Manifest
 import android.content.Intent

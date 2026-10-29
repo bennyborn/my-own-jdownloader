@@ -4,10 +4,10 @@ plugins {
 }
 
 android {
-    namespace = "de.bennyborn.myjd"
+    namespace = "app.myownjd"
     compileSdk = 34
     defaultConfig {
-        applicationId = "de.bennyborn.myjd"
+        applicationId = "app.myownjd"
         minSdk = 30
         targetSdk = 34
         // build.sh passes the minutes since 1970, so every build is newer than the one before and the app can tell when the backend offers a newer one.

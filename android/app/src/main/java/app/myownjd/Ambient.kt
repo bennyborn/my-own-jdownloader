@@ -1,4 +1,4 @@
-package de.bennyborn.myjd
+package app.myownjd
 
 import android.content.Context
 import android.graphics.Canvas

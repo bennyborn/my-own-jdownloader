@@ -1,4 +1,4 @@
-package de.bennyborn.myjd
+package app.myownjd
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator

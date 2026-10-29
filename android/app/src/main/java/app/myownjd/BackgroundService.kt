@@ -1,4 +1,4 @@
-package de.bennyborn.myjd
+package app.myownjd
 
 import android.app.Notification
 import android.app.PendingIntent
@@ -155,7 +155,7 @@ class BackgroundService : Service() {
     companion object {
         // A captcha stays open for ten minutes: a look every 15 s is early enough, and every look goes on to the MyJDownloader API (not ours).
         private const val POLL_MS = 15_000L
-        private const val STOP_CNL = "de.bennyborn.myjd.CNL_STOP"
+        private const val STOP_CNL = "app.myownjd.CNL_STOP"
 
         // What the settings ask for: both need a stored backend and notifications that can be shown (the entry is one).
         private fun wantsWatch(c: Context) = Config.url(c) != null && Config.notify(c) && Notifier.enabled(c)
