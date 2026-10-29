@@ -9,11 +9,6 @@
   Your own web UI for <a href="https://jdownloader.org">JDownloader</a>: one small container, your data stays with you.
 </p>
 
-The official MyJDownloader web page is a hosted service that every call has to travel through. My Own JDownloader runs on your side and
-replaces it with something quicker and more current: a live UI that only moves when something changes, a direct line to your JDownloader
-in the LAN, captchas and Click'n'Load that work on the phone too, and an MCP server for AI assistants. It controls JDownloaders that run
-anywhere (a NAS, a server, your PC); nothing has to be installed next to them.
-
 <p align="center">
   <img src="docs/screenshot-desktop.png" alt="Download list on the desktop" height="440">
   &nbsp;
@@ -21,6 +16,11 @@ anywhere (a NAS, a server, your PC); nothing has to be installed next to them.
   &nbsp;
   <img src="docs/screenshot-captcha.png" alt="Solving a Turnstile captcha on a phone" height="440">
 </p>
+
+The official MyJDownloader web page is a hosted service that every call has to travel through. My Own JDownloader runs on your side and
+replaces it with something quicker and more current: a live UI that only moves when something changes, a direct line to your JDownloader
+in the LAN, captchas and Click'n'Load that work on the phone too, and an MCP server for AI assistants. It controls JDownloaders that run
+anywhere (a NAS, a server, your PC); nothing has to be installed next to them.
 
 ## Contents
 
