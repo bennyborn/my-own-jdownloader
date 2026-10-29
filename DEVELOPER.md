@@ -215,7 +215,7 @@ reports, run `/config/list` with the pattern `.*` (all) or an interface name, wi
 `backend/src/mcp.ts` serves MCP (Streamable HTTP, stateless) on `/mcp`, behind the same Basic auth as the UI (any username, `UI_PASSWORD` as password). Point a client at `http://<host>:<APP_PORT>/mcp`, e.g. `claude mcp add --transport http jd http://<host>:20031/mcp --header "Authorization: Basic <base64 of x:password>"`.
 
 - Read tools: `list_devices`, `search_settings` (the JD settings are searched, not listed), `list_settings_group`, `list_plugins`, `plugin_settings`, `list_downloads`, `package_links`, `list_linkgrabber`, `list_accounts`, `list_captchas`. Every tool takes an optional `device` (name or id).
-- Write tools (`set_setting`, `reset_setting`, `add_links`) only exist with `MCP_WRITE=true`. Values are checked against the setting's type and options; secrets and the groups this app manages itself are refused.
+- Write tools (`set_setting`, `reset_setting`, `add_links`) only exist when writing is switched on (on the settings page; `MCP_WRITE=true` is the default until it was chosen there). Values are checked against the setting's type and options; secrets and the groups this app manages itself are refused.
 - There is deliberately no tool to stop, pause or delete downloads.
 
 ## Talking to the MyJDownloader API
@@ -231,12 +231,21 @@ keep a backend with any number of clients cheap for it. Read this before you add
   counts as a change; it drops the kept answers of that device (`epoch`). If you are unsure, leave it out of both lists: stale data is worse
   than one extra call.
 - **No timers that call the API.** Nothing in the backend asks MyJDownloader unless a client wants it. Use one of these patterns instead:
-  subscribe (`DownloadsPoller`: polls while at least one SSE listener exists), lease (`activity.view()`: the speed is measured for 15 s after the
+  subscribe (`DownloadsPoller` and `LiveHub`, see below: they poll while at least one SSE listener exists), lease (`activity.view()`: the speed is measured for 15 s after the
   graph was asked for), or look up on request with an age (`BandwidthHistory.probe(maxAgeMs)`, `DeviceRegistry.freshen(maxAgeMs)`).
+- **Direct connection.** `callDevice` sends the data calls straight to the device in the LAN when the API gave an address that can be reached
+  (`MYJD_DIRECT=off` switches this off). Same protocol and session, 2-4 ms instead of 35; only the address lookup touches the API. Such calls are
+  counted in `directCalls`, not in `myjdCalls`. An address that fails is avoided for a minute and the call takes the relay. On a direct route
+  reads are kept only 300 ms and the pollers ask every second (`isDirect`, `DIRECT_POLL_MS`). The app container must be able to reach the
+  device's network: with Docker that means joining the JDownloader's networks, e.g. in a `compose.override.yaml` (gitignored).
 - **`Shared`** (`backend/src/shared.ts`) is the small helper behind it: `get(key, ttlMs, load)` returns a kept answer or calls `load` once
   for everybody who asks at the same time. Failures are not kept.
 - **See what it costs:** `GET /api/health` (it does not count as a client) shows `myjdCalls` and who asked last (`clients`). Read it twice
   a minute apart to measure a change. Without any client the counter must not move.
+- **One stream for the web UI:** `GET /api/live` (SSE; `frontend/src/live.ts` is the client). `LiveHub` (`backend/src/live.ts`) runs one loop per source
+  (captchas, dialogs, device list, and per device the linkgrabber) while a browser is connected and sends an event only when the answer changed
+  (`fingerprint` leaves out values that merely count down). `?device=<id>|all` adds the downloads and the linkgrabber of those devices,
+  `?grabber=slow` looks at the linkgrabber only now and then. New live data is a new source there, not a timer in the page.
 - Client side: a hidden tab does not poll, and the Android service rests while the app is in front. Keep new polls consistent with that.
 
 ## Distributing the extension and the app
@@ -307,7 +316,7 @@ switches, lock) is announced with the window event `android-state`; the page rea
 (`frontend/src/settings.ts`, scope `app`) only exists inside the app and is stored on the phone through the bridge, never in the backend.
 
 Things to know:
-- The solver trick needs the page to keep the hoster's origin: tokens are bound to it (see "Captcha" in PLAN.md).
+- The solver trick needs the page to keep the hoster's origin: tokens are bound to the origin of the hoster page, so the solver loads that page itself and only adds the widget.
 - Click'n'Load answers like a local JDownloader (`/jdcheck.js`, `/flash`, `/flash/add`, `/flash/addcrypted2`, CORS and
   `Access-Control-Allow-Private-Network`) and forwards the payload the extension sends.
 - The lock is privacy only: the service reads the backend password without the user, so it cannot be encrypted behind the lock.

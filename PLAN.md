@@ -305,24 +305,17 @@ und dann nur in einem abgeschotteten Netz.
   name history in the add-links dialog (`DownloadDestinationHistory`, `PackageNameHistory`).
 - Settings page itself: readable German/English labels and units for the important keys (many values are milliseconds or
   bytes), "restart needed" hints, a filter "only changed", expert settings folded away, export/import of the JD config.
-- JD dialogs: the types of the JD jars are all handled, but "new password", "choose several" and "confirm" were never seen
-  (only the choice, file exists, login and archive password dialogs). "Filename too long" (`IfFilenameTooLongAction`) and the pure GUI
-  dialogs can only be cancelled; a cancelled dialog gets JD's default after its timeout.
+- JD dialogs: "Filename too long" (`IfFilenameTooLongAction`) and the pure GUI dialogs can only be cancelled; a cancelled dialog gets
+  JD's default after its timeout. "New password" and "choose several" are handled by the code but cannot be triggered in a stock JD
+  (nothing in the jars opens them, only plugins through the old `UserIO`); never seen.
 - Backend start: if api.jdownloader.org is unreachable the process exits and Docker restarts it in a loop (seen once). Retry with
   a delay instead, ideally with the server already listening and a "MyJDownloader not reachable" page.
-- Web UI notifications only work over https or on localhost (not on `http://server:port`); document it, or put the UI behind a
-  reverse proxy with a certificate. The extension's and the Android app's notifications work everywhere. Without https a browser
-  also cannot install the UI as an app (no PWA install); the Android app replaces that.
-- Browser extension: verify the Firefox package on a real Firefox (AMO signing, install, update over https); revise the design of the captcha page.
-- Captcha tasks from the Anti-Captcha endpoint only live in memory; decide whether to keep them across restarts.
-- Hoster limits: links that wait because of a hoster limit only show JD's text (tooltip); a short badge ("hoster limit") would help.
-- Mobile follow-ups: expert settings behind a "Show advanced" switch (JD's "General" page has 75 entries; needs a rule for what counts
-  as expert, e.g. values in ms or bytes); the speed graph runs behind the ETA text in the status bar when the curve is high; closing a dialog
-  is not animated (opening is).
-- Android app, to confirm on the phone: Click'n'Load (incl. Chrome's local network prompt), share, "ask every time" chooser, app
-  lock, start after boot, file picker, manufacturer battery limits. Ideas: release signing instead of the debug key,
+- Web UI over https: notifications work (confirmed behind https), but they only work over https or on localhost, not on `http://server:port`;
+  document that in the user docs. The PWA install over https is not tested yet; without https a browser cannot install the UI as an
+  app, the Android app replaces that. The extension's and the Android app's notifications work everywhere.
+- Android app, to confirm on the phone: share, "ask every time" chooser, app lock, start after boot, file picker, manufacturer
+  battery limits. (Click'n'Load works, confirmed.) Ideas: release signing instead of the debug key,
   hCaptcha / reCAPTCHA test (the chain was only tried with Turnstile), the modern back handling instead of `onBackPressed`.
-- Show "open connections" metric in the status bar (API call still unknown).
 - Resolve more plugin-internal URLs (only YouTube has been checked).
 - Tested against the real JDownloader (checked = confirmed by the user):
   - [x] Rename package and link
@@ -336,15 +329,16 @@ und dann nur in einem abgeschotteten Netz.
   - [x] Start download (force start, enabling the item first)
   - [x] Image captcha dialog: solve, skip variants, refresh, the countdown
   - [x] Start / stop / start again on a test device (the state name `stopped_state` is cut to `stopped`)
-  - [ ] Pause and resume (the state name for "paused" is assumed to be `pause`), snail and limit line
+  - [x] Pause and resume (the state name for "paused" is assumed to be `pause`), snail and limit line
   - [x] Install an update (on a test instance, 2026-10-27)
-  - [x] JD dialogs: file exists, login, archive password, the order of several dialogs (on jd-test-2, answered in the UI)
+  - [x] JD dialogs: file exists, login, archive password, confirm (yes / no), the order of several dialogs (on jd-test-2, answered in the UI)
   - [x] Context menu entries and their settings, priority arrows, basic authentication page, system info and power actions, extensions page
     (switch, install with restart, options), the toasts at the top on a phone, the update notice and spinner button (2026-10-27)
   - [x] "Check online status": in the linkgrabber it answers with the counts (online / offline / unknown); in the downloads list the call
     returns nothing, a gone link shows "File not found" in JD's status anyway
-  - [ ] Android app update on the phone (check, download, system installer, version after the update)
-  - [ ] Chromium extension: first installation from the ZIP, self-update into the chosen folder
-  - [ ] Firefox: signing with AMO keys, installation, update over https
-  - [ ] Web UI notifications over https
+  - [x] Android app update on the phone (check, download, system installer, version after the update)
+  - [x] Chromium extension: first installation from the ZIP, self-update into the chosen folder
+  - [x] Firefox: signing with AMO keys, installation, update over https
+  - [x] Web UI notifications over https
+  - [x] New captcha page of the extension (logo, countdown, status, success state)
   - [ ] Set `UI_PASSWORD` and check logo, manifest, icons and the Anti-Captcha endpoints still work
