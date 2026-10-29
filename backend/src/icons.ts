@@ -1,4 +1,6 @@
-import { lookup } from 'node:dns/promises'
+import { lookup, type LookupAddress } from 'node:dns'
+import { get as httpGet } from 'node:http'
+import { get as httpsGet } from 'node:https'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { join } from 'node:path'
@@ -70,30 +72,74 @@ const letterIcon = (host: string): Icon => {
 }
 
 const isPrivateAddress = (address: string): boolean => {
-  if (address.includes(':')) return /^(::1?$|f[cd]|fe80)/i.test(address) || address.startsWith('::ffff:')
-  const [a, b] = address.split('.').map(Number)
-  return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254)
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address)
+  if (mapped) return isPrivateAddress(mapped[1])
+  if (address.includes(':')) return /^(::1?$|f[cd]|fe[89ab]|ff)/i.test(address) || address.startsWith('::ffff:')
+  const [a, b, c] = address.split('.').map(Number)
+  return (
+    a === 0 || a === 10 || a === 127 || a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && c === 0) ||
+    (a === 198 && (b === 18 || b === 19))
+  )
 }
 
-// Fetches icons from the host's own website (done by the server, not the browser).
-const safeFetch = async (url: string, accept: string): Promise<Response | null> => {
-  const { hostname, protocol } = new URL(url)
-  if (protocol !== 'https:' && protocol !== 'http:') return null
-  if (isIP(hostname) || !hostname.includes('.')) return null
-  const addresses = await lookup(hostname, { all: true })
-  if (addresses.some((a) => isPrivateAddress(a.address))) return null
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; my-own-jdownloader icon fetch)', Accept: accept },
-    signal: AbortSignal.timeout(6000),
-    redirect: 'follow'
+// The connection itself resolves the name and refuses private addresses, so there is no gap between the check and the use
+// (DNS rebinding), and every redirect target goes through the same check.
+const publicLookup = ((hostname: string, options: { all?: boolean }, callback: (...args: unknown[]) => void) => {
+  lookup(hostname, { all: true }, (error, addresses: LookupAddress[]) => {
+    if (error) return callback(error)
+    if (!addresses.length || addresses.some((a) => isPrivateAddress(a.address))) return callback(new Error('Private address'))
+    if (options.all) return callback(null, addresses)
+    callback(null, addresses[0].address, addresses[0].family)
   })
-  return res.ok ? res : null
-}
+}) as never
 
-const readLimited = async (res: Response, limit: number): Promise<Buffer | null> => {
-  const data = Buffer.from(await res.arrayBuffer())
-  return data.length > 0 && data.length <= limit ? data : null
-}
+const MAX_REDIRECTS = 3
+
+// Fetches icons from the host's own website (done by the server, not the browser). Null: not allowed, failed, too big or not a 2xx.
+const safeFetch = (url: string, accept: string, limit: number, redirects = 0): Promise<{ url: string; type: string; data: Buffer } | null> =>
+  new Promise((resolve) => {
+    let target: URL
+    try {
+      target = new URL(url)
+    } catch {
+      return resolve(null)
+    }
+    if ((target.protocol !== 'https:' && target.protocol !== 'http:') || isIP(target.hostname.replace(/^\[|\]$/g, '')) || !target.hostname.includes('.')) return resolve(null)
+    const request = (target.protocol === 'https:' ? httpsGet : httpGet)(
+      target,
+      { lookup: publicLookup, timeout: 6000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; my-own-jdownloader icon fetch)', Accept: accept } },
+      (res) => {
+        const status = res.statusCode ?? 0
+        if (status >= 300 && status < 400 && res.headers.location) {
+          res.resume()
+          if (redirects >= MAX_REDIRECTS) return resolve(null)
+          return resolve(safeFetch(new URL(res.headers.location, target).toString(), accept, limit, redirects + 1))
+        }
+        if (status < 200 || status >= 300) {
+          res.resume()
+          return resolve(null)
+        }
+        const chunks: Buffer[] = []
+        let size = 0
+        res.on('data', (chunk: Buffer) => {
+          size += chunk.length
+          if (size > limit) {
+            resolve(null)
+            request.destroy()
+          } else chunks.push(chunk)
+        })
+        res.on('end', () => resolve(size > 0 ? { url: target.toString(), type: String(res.headers['content-type'] ?? '').split(';')[0].trim(), data: Buffer.concat(chunks) } : null))
+        res.on('error', () => resolve(null))
+      }
+    )
+    request.on('timeout', () => request.destroy())
+    request.on('error', () => resolve(null))
+  })
 
 const parseIconLinks = (html: string, base: string): string[] => {
   const links: { href: string; score: number }[] = []
@@ -151,18 +197,17 @@ const fetchFavicon = async (host: string): Promise<Icon | null> => {
   const origin = `https://${host}/`
   const candidates: string[] = []
   try {
-    const page = await safeFetch(origin, 'text/html')
-    if (page) candidates.push(...parseIconLinks((await readLimited(page, 1024 * 1024)) ?.toString('utf8') ?? '', page.url))
+    const page = await safeFetch(origin, 'text/html', 1024 * 1024)
+    if (page) candidates.push(...parseIconLinks(page.data.toString('utf8'), page.url))
   } catch {
     /* fall through to /favicon.ico */
   }
   candidates.push(`${origin}favicon.ico`)
   for (const url of candidates.slice(0, 4)) {
     try {
-      const res = await safeFetch(url, 'image/svg+xml,image/png,image/*')
-      const data = res && (await readLimited(res, MAX_BYTES))
-      const type = data && res ? sniffType(data, (res.headers.get('content-type') ?? '').split(';')[0].trim()) : null
-      if (data && type) return { type, data }
+      const res = await safeFetch(url, 'image/svg+xml,image/png,image/*', MAX_BYTES)
+      const type = res ? sniffType(res.data, res.type) : null
+      if (res && type) return { type, data: res.data }
     } catch {
       /* try the next candidate */
     }
