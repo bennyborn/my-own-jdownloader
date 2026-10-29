@@ -1,4 +1,5 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useLive } from './live'
 
 export interface DeviceInfo {
   id: string
@@ -117,15 +118,16 @@ export const loadUpdates = async () => {
 
 // Keeps the device list (and with it the online state) up to date.
 export const useDevices = () => {
-  let timer: ReturnType<typeof setInterval> | undefined
+  useLive('devices', (data) => {
+    devices.value = data as typeof devices.value
+    devicesLoaded.value = true
+  })
   let updateTimer: ReturnType<typeof setInterval> | undefined
   onMounted(() => {
     void loadDevices().then(loadUpdates)
-    timer = setInterval(loadDevices, 5000)
     updateTimer = setInterval(() => !document.hidden && loadUpdates(), 10 * 60_000)
   })
   onUnmounted(() => {
-    clearInterval(timer)
     clearInterval(updateTimer)
   })
 }

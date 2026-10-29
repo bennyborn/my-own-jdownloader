@@ -1,4 +1,5 @@
 import { activity } from './activity.js'
+import { LiveHub } from './live.js'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import Fastify, { LogController, type FastifyRequest } from 'fastify'
@@ -106,14 +107,15 @@ app.addHook('onResponse', async (request, reply) => {
   else app.log.info(line)
 })
 
-app.get('/api/health', async () => ({ status: 'ok', myjdCalls: client.calls, clients: activity.status() }))
+app.get('/api/health', async () => ({ status: 'ok', myjdCalls: client.calls, directCalls: client.directCalls, clients: activity.status() }))
 // The state of the devices is looked up now if the last look is older than 15 s (the list of devices: 30 s): a client that asks for it
 // (the popup of the extension, the web UI, the app's service) gets it fresh, and nobody asking means no call.
-app.get('/api/devices', async () => {
+const deviceList = async () => {
   await registry.freshen(30_000).catch(() => undefined)
   await Promise.all(registry.all().map((c) => c.bandwidth.probe(15_000)))
   return registry.list()
-})
+}
+app.get('/api/devices', deviceList)
 app.get('/api/speed-history', async (request) => {
   activity.view() // somebody looks at the graph: the speed is measured while that lasts
   return { now: Date.now(), samples: dev(request).bandwidth.getSamples() }
@@ -127,11 +129,11 @@ app.get<{ Params: { uuid: string } }>('/api/packages/:uuid/links', async (reques
   return dev(request).poller.getLinks(uuid)
 })
 
-app.get('/api/linkgrabber', async (request) => {
-  const { grabber } = dev(request)
+const grabberState = async ({ grabber }: DeviceContext) => {
   const [collecting, packages, links] = await Promise.all([grabber.isCollecting(), grabber.getPackages(), grabber.getLinks()])
   return { collecting, packages: packages.map((p) => ({ ...p, links: links.filter((l) => l.packageUUID === p.uuid) })) }
-})
+}
+app.get('/api/linkgrabber', async (request) => grabberState(dev(request)))
 
 app.get<{ Querystring: { id?: string } }>('/api/linkgrabber/variants', async (request, reply) => {
   const id = Number(request.query.id)
@@ -519,9 +521,9 @@ app.get('/api/device', async (request) => {
 
 // Open captchas. Without ?device= those of all devices: they have to be answered whichever device is
 // shown right now. Every job says which device it belongs to; the other captcha routes need that device.
-app.get<{ Querystring: { device?: string } }>('/api/captcha', async (request) => {
+const captchaList = async (device?: string) => {
   await registry.freshen().catch(() => undefined)
-  const contexts = request.query.device ? [registry.resolve(request.query.device)] : registry.all()
+  const contexts = device ? [registry.resolve(device)] : registry.all()
   const lists = await Promise.all(
     contexts.map(async (c) => {
       // A device that was offline the last time is looked at again (at most once a minute); online ones are just asked.
@@ -531,11 +533,12 @@ app.get<{ Querystring: { device?: string } }>('/api/captcha', async (request) =>
     })
   )
   return lists.flat()
-})
+}
+app.get<{ Querystring: { device?: string } }>('/api/captcha', async (request) => captchaList(request.query.device))
 
 // Open questions of the JDownloaders (their dialogs). Like the captchas those of all online devices: they block a download
 // whichever device is shown. Offline devices are not asked.
-app.get('/api/dialogs', async () => {
+const dialogList = async () => {
   const lists = await Promise.all(
     registry
       .all()
@@ -543,7 +546,8 @@ app.get('/api/dialogs', async () => {
       .map(async (c) => (await c.dialogs.list().catch(() => [])).map((d) => ({ ...d, device: c.id, deviceName: c.device.name })))
   )
   return lists.flat()
-})
+}
+app.get('/api/dialogs', dialogList)
 app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/dialogs/:id/answer', async (request, reply) => {
   const id = Number(request.params.id)
   const { cancel, index, indices, text, username, password, verification, remember } = request.body ?? {}
@@ -847,28 +851,41 @@ app.post<{ Params: { uuid: string }; Body: { linkIds?: unknown; afterLinkId?: un
   }
 )
 
-// Server-sent events: pushes a new snapshot whenever a poller has fresh data. ?device=<id> streams one
-// device, ?device=all every online device (each event says which device it is about).
-app.get<{ Querystring: { device?: string } }>('/api/events', (request, reply) => {
-  const contexts = request.query.device === 'all' ? registry.all().filter((c) => c.online !== false) : [dev(request)]
+// The one stream of the web UI (see live.ts for what is shared by all pages). Without ?device= it carries the captchas, the questions of the
+// JDownloaders and the device list; ?device=<id> adds the downloads and the linkgrabber of that device, ?device=all those of every online
+// device (each event says which device it is about). ?grabber=slow looks at the linkgrabber only now and then (its page is not shown).
+// A page gets every event once on connecting, then changes. (The browser extension does not use it: it asks now and then.)
+const live = new LiveHub(
+  {
+    captcha: { everyMs: () => 1500, load: () => captchaList(), fingerprint: (jobs: { remaining: number }[]) => jobs.map(({ remaining, ...rest }) => rest) },
+    dialogs: { everyMs: () => 5000, load: dialogList },
+    devices: { everyMs: () => 5000, load: deviceList }
+  },
+  () => activity.touch('/api/live', 'web UI')
+)
+app.get<{ Querystring: { device?: string; grabber?: string } }>('/api/live', (request, reply) => {
+  const { device, grabber } = request.query
+  const contexts = !device ? [] : device === 'all' ? registry.all().filter((c) => c.online !== false) : [dev(request)]
   reply.hijack()
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive'
-  })
+  reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+  const write = (event: string, data: string) => reply.raw.write(`event: ${event}\ndata: ${data}\n\n`)
   const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 25000)
-  const unsubscribes = contexts.map((c) => {
-    const send = (snapshot: unknown) => reply.raw.write(`event: downloads\ndata: ${JSON.stringify({ device: c.id, ...(snapshot as object) })}\n\n`)
-    const unsubscribe = c.poller.subscribe(send)
+  const stops = [live.subscribe(write)]
+  for (const c of contexts) {
+    stops.push(
+      c.poller.subscribe((snapshot) => write('downloads', JSON.stringify({ device: c.id, ...snapshot }))),
+      new LiveHub(
+        { grabber: { everyMs: () => (grabber === 'slow' ? 15_000 : 1000), load: () => grabberState(c) } },
+        () => activity.touch('/api/live', 'web UI')
+      ).subscribe((event, data) => write(event, `{"device":"${c.id}",${data.slice(1)}`))
+    )
     // The poller sleeps without viewers: its last snapshot may be hours old (a package then looks finished, not unpacking). The fresh one follows.
     const cached = c.poller.getSnapshot()
-    if (Date.now() - cached.updatedAt < 10000) send(cached)
-    return unsubscribe
-  })
+    if (Date.now() - cached.updatedAt < 10000) write('downloads', JSON.stringify({ device: c.id, ...cached }))
+  }
   request.raw.on('close', () => {
     clearInterval(heartbeat)
-    for (const unsubscribe of unsubscribes) unsubscribe()
+    for (const stop of stops) stop()
   })
 })
 

@@ -1,3 +1,4 @@
+import { connect as tcpConnect } from 'node:net'
 import { Shared } from '../shared.js'
 import { decrypt, encrypt, hmacSha256Hex, sha256 } from './crypto.js'
 
@@ -14,6 +15,18 @@ const APP_KEY = 'my-own-jdownloader'
 const MAX_PARALLEL = 8
 const MIN_GAP_MS = 30
 const MAX_PAUSE_MS = 60_000
+
+// Direct connection: the data calls go to the device in the LAN (same protocol, same session, 2-4 ms instead of 35). Only the address comes
+// from the API (kept ROUTE_TTL_MS). An address that cannot be reached is not tried again for ROUTE_AVOID_MS, those calls take the relay.
+const ROUTE_TTL_MS = 5 * 60_000
+const ROUTE_AVOID_MS = 60_000
+const PROBE_TIMEOUT_MS = 1500
+// Longest time a read is kept on a direct route, and the quicker poll of the live views there (the relay keeps the slow numbers).
+const DIRECT_TTL_MS = 300
+export const DIRECT_POLL_MS = 1000
+// Errors of the connect phase: the request never reached the device, so the relay can safely take over this very call.
+// ECONNRESET: the device drops the connection when it does not know the session; the relay then reports it properly.
+const NOT_SENT = /ECONNRESET|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT/
 
 // Action -> how long (ms) the answer is kept. The lists the live views poll are short, configuration lives longer.
 const READ_TTL_MS: Record<string, number> = {
@@ -33,6 +46,15 @@ const READ_TTL_MS: Record<string, number> = {
 }
 // Reads that are not kept but do not change anything either. Every other action may change something: it drops the memory.
 const NEUTRAL = /\/(getSpeedInBps|getDownloadUrls|getVariants|getArchiveInfo|getArchiveSettings)$|^\/captcha\/get$/
+
+const canConnect = (host: string, port: number) =>
+  new Promise<boolean>((resolve) => {
+    const socket = tcpConnect({ host, port, timeout: PROBE_TIMEOUT_MS })
+    socket.once('connect', () => resolve(true))
+    socket.once('timeout', () => resolve(false))
+    socket.once('error', () => resolve(false))
+    socket.once('connect', () => socket.destroy())
+  })
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -80,6 +102,11 @@ export class MyJdClient {
   private readonly epochs = new Map<string, number>()
   // Requests sent to the API so far (shown by /api/health: the way to see that an idle backend really is idle).
   calls = 0
+  // Calls that went straight to a device (not counted in `calls`, they do not touch the API).
+  directCalls = 0
+  private readonly direct = process.env.MYJD_DIRECT !== 'off'
+  private readonly routes = new Map<string, { base?: string; until: number }>()
+  private readonly resolving = new Map<string, Promise<string | undefined>>()
   private active = 0
   private readonly waiting: (() => void)[] = []
   private lastStart = 0
@@ -124,8 +151,10 @@ export class MyJdClient {
   // Reads from READ_TTL_MS are served from memory when they are young enough; any other action that is not known to be a pure read
   // counts as a change and makes the device forget what it kept.
   async callDevice<T = unknown>(deviceId: string, action: string, params: unknown[] = []): Promise<T> {
-    const ttl = READ_TTL_MS[action]
-    if (ttl) {
+    const baseTtl = READ_TTL_MS[action]
+    if (baseTtl) {
+      // The device answers in a few ms: a kept answer can be much younger there (the API is spared by the relay's own TTL).
+      const ttl = this.isDirect(deviceId) ? Math.min(baseTtl, DIRECT_TTL_MS) : baseTtl
       const key = `${deviceId}\0${this.epoch(deviceId)}\0${action}\0${JSON.stringify(params)}`
       return this.reads.get(key, ttl, () => this.callDeviceNow<T>(deviceId, action, params))
     }
@@ -136,6 +165,12 @@ export class MyJdClient {
     } finally {
       this.epochs.set(deviceId, this.epoch(deviceId) + 1)
     }
+  }
+
+  // Whether the calls to this device currently go straight to it (what the last lookup found; the pollers use it to be quicker).
+  isDirect(deviceId: string): boolean {
+    const route = this.routes.get(deviceId)
+    return !!route?.base && route.until > Date.now()
   }
 
   // Changes counted so far for the device; the pollers use it to know whether a snapshot of theirs can still be true.
@@ -163,15 +198,24 @@ export class MyJdClient {
     return this.reconnecting
   }
 
-  private async sendDeviceCall<T>(deviceId: string, action: string, params: unknown[]): Promise<T> {
+  private async sendDeviceCall<T>(deviceId: string, action: string, params: unknown[], relayOnly = false): Promise<T> {
     const session = this.requireSession()
     const rid = this.nextRid()
     const body = encrypt(JSON.stringify({ url: action, params: params.map((p) => JSON.stringify(p)), rid, apiVer: 1 }), session.deviceEncryptionToken)
-    const res = await this.fetchLimited(`${API_URL}/t_${session.token}_${deviceId}${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/aesjson-jd; charset=utf-8' },
-      body
-    })
+    const path = `/t_${session.token}_${deviceId}${action}`
+    const init = { method: 'POST', headers: { 'Content-Type': 'application/aesjson-jd; charset=utf-8' }, body }
+    const base = relayOnly ? undefined : await this.directBase(deviceId)
+    let res: Response | undefined
+    if (base) {
+      try {
+        res = await this.fetchLimited(`${base}${path}`, init, true)
+      } catch (error) {
+        // The device was not reachable (or dropped the session): avoid the route for a while. Only a call that never got there is repeated.
+        this.routes.set(deviceId, { until: Date.now() + ROUTE_AVOID_MS })
+        if (!NOT_SENT.test(String((error as { cause?: { code?: string } }).cause?.code ?? error))) throw error
+      }
+    }
+    res ??= await this.fetchLimited(`${API_URL}${path}`, init)
     let text: string
     try {
       text = await this.readBody(res)
@@ -190,16 +234,49 @@ export class MyJdClient {
     return data.data as T
   }
 
+  // Address of the device in the LAN, or undefined (relay): asked from the API once per ROUTE_TTL_MS, the first address that accepts a
+  // connection wins. Calls at the same time share one lookup.
+  private async directBase(deviceId: string): Promise<string | undefined> {
+    if (!this.direct) return undefined
+    const known = this.routes.get(deviceId)
+    if (known && known.until > Date.now()) return known.base
+    let lookup = this.resolving.get(deviceId)
+    if (!lookup) {
+      lookup = this.resolveDirect(deviceId).finally(() => this.resolving.delete(deviceId))
+      this.resolving.set(deviceId, lookup)
+    }
+    return lookup
+  }
+
+  private async resolveDirect(deviceId: string): Promise<string | undefined> {
+    let base: string | undefined
+    try {
+      const data = await this.sendDeviceCall<{ infos?: { ip: string; port: number }[] }>(deviceId, '/device/getDirectConnectionInfos', [], true)
+      for (const { ip, port } of data?.infos ?? []) {
+        if (await canConnect(ip, port)) {
+          base = `http://${ip}:${port}`
+          break
+        }
+      }
+    } catch {
+      // offline or no answer: the relay call will tell
+    }
+    this.routes.set(deviceId, { base, until: Date.now() + (base ? ROUTE_TTL_MS : ROUTE_AVOID_MS) })
+    return base
+  }
+
   // Every request to the API passes here: its turn (MAX_PARALLEL, MIN_GAP_MS, the pause after a 429) and the time limit.
-  private async fetchLimited(url: string, init?: RequestInit): Promise<Response> {
+  private async fetchLimited(url: string, init?: RequestInit, direct = false): Promise<Response> {
     if (this.active >= MAX_PARALLEL) await new Promise<void>((resolve) => this.waiting.push(resolve)) // the call that ends hands its place over
     else this.active++
     try {
       const startAt = Math.max(Date.now(), this.pausedUntil, this.lastStart + MIN_GAP_MS)
       this.lastStart = startAt
       if (startAt > Date.now()) await sleep(startAt - Date.now())
-      this.calls++
+      if (direct) this.directCalls++
+      else this.calls++
       const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
+      if (direct) return res
       // Only a 429 slows everybody down: a timeout or a 5xx is often one device that is offline, and the others must not suffer for it.
       if (res.status === 429) {
         this.pauseMs = Math.min(this.pauseMs ? this.pauseMs * 2 : 2000, MAX_PAUSE_MS)

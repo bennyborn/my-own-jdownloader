@@ -1,17 +1,15 @@
-import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
+import { computed, onUnmounted, ref, watch, type Ref } from 'vue'
 import { currentDevice, devices, showingAll, withDevice } from './devices'
+import { liveScope, useLive } from './live'
 import type { GrabberState } from './types'
 
-// Polls the linkgrabber of the shown device, or of every online device in the overview of all devices:
-// fast while it is visible or JD is analysing links, slowly otherwise (the slow poll keeps the link counter on the tab up to date).
+// The linkgrabber of the shown device, or of every online device in the overview of all devices (from the live stream, live.ts).
 export const useGrabber = (visible: Ref<boolean>) => {
   const states = ref<Record<string, GrabberState>>({})
   const error = ref('')
   const boosting = ref(false) // right after adding links: JD may not report "collecting" yet
   let boostBaseline = 0
   let boostTimer: ReturnType<typeof setTimeout> | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let stopped = false
 
   const ids = computed(() => (showingAll.value ? devices.value.filter((d) => d.online !== false).map((d) => d.id) : currentDevice.value ? [currentDevice.value] : []))
   // The linkgrabber of the current device (the normal view).
@@ -39,23 +37,25 @@ export const useGrabber = (visible: Ref<boolean>) => {
   const collecting = computed(() => shown.value.some((s) => s.collecting))
   const analysing = computed(() => (collecting.value && hasUnknown.value) || boosting.value)
 
-  const loop = async () => {
-    await load()
-    if (stopped) return
+  // The stream brings the changes; it looks at the linkgrabber quickly while the page is shown or JD is analysing links, slowly otherwise
+  // (the slow look keeps the link counter on the tab up to date).
+  watch(analysing, () => (liveScope.value = { ...liveScope.value, grabberFast: visible.value || analysing.value }))
+  watch(visible, () => (liveScope.value = { ...liveScope.value, grabberFast: visible.value || analysing.value }), { immediate: true })
+  useLive('grabber', (data) => {
+    const { device, ...rest } = data as GrabberState & { device: string }
+    states.value = { ...states.value, [device]: rest }
+    error.value = ''
     // End the boost once the new links have shown up and all of them are checked.
     if (boosting.value && linkCount.value > boostBaseline && !hasUnknown.value) boosting.value = false
-    const fast = visible.value || analysing.value
-    timer = setTimeout(loop, boosting.value ? 1000 : fast ? 2000 : 15000)
-  }
+  })
 
-  // Poll quickly for a while so new links show up as soon as JD has found them.
+  // Right after adding links: look now, and keep the quick look until the new links have shown up (JD may not report "collecting" yet).
   const boost = (ms = 15000) => {
     boostBaseline = linkCount.value
     boosting.value = true
     clearTimeout(boostTimer)
     boostTimer = setTimeout(() => (boosting.value = false), ms)
-    clearTimeout(timer)
-    void loop()
+    void load()
   }
 
   // Drops the "analysing" state again, e.g. when adding failed and nothing new will show up.
@@ -64,20 +64,8 @@ export const useGrabber = (visible: Ref<boolean>) => {
     boosting.value = false
   }
 
-  // Another device (or the overview): ask the new ones at once instead of waiting for the next round.
-  watch(ids, (now, before) => {
-    if (now.join() === before.join()) return
-    cancelBoost()
-    clearTimeout(timer)
-    void loop()
-  })
-
-  onMounted(loop)
-  onUnmounted(() => {
-    stopped = true
-    clearTimeout(timer)
-    clearTimeout(boostTimer)
-  })
+  // Another device (or the overview): the stream is asked again by useDownloads; the old state of a device stays until its first event.
+  onUnmounted(() => clearTimeout(boostTimer))
 
   return { state, states, error, reload: load, boost, cancelBoost, analysing, linkCount }
 }

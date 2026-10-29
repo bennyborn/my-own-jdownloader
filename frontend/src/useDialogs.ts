@@ -1,5 +1,6 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { devices, withDevice } from './devices'
+import { useLive } from './live'
 import { showError } from './toast'
 
 export interface JdDialog {
@@ -31,22 +32,25 @@ export interface DialogAnswer {
   remember?: boolean
 }
 
-// The dialogs the JDownloaders wait on (see backend/src/dialogs.ts). The first one is shown; a hidden tab does not ask.
+// The dialogs the JDownloaders wait on (see backend/src/dialogs.ts). The first one is shown.
 export const useDialogs = () => {
   const list = ref<JdDialog[]>([])
   const handled = ref<Set<string>>(new Set()) // answered just now, hidden until JD drops them
-  let timer: ReturnType<typeof setInterval> | undefined
   const keyOf = (d: Pick<JdDialog, 'device' | 'id'>) => `${d.device}/${d.id}`
 
+  const apply = (data: JdDialog[]) => {
+    list.value = data
+    const open = new Set(list.value.map(keyOf))
+    if ([...handled.value].some((k) => !open.has(k))) handled.value = new Set([...handled.value].filter((k) => open.has(k)))
+  }
+
+  // Looks now (after an answer); otherwise the stream brings the changes.
   const reload = async () => {
     try {
       const res = await fetch('/api/dialogs')
-      if (!res.ok) return
-      list.value = await res.json()
-      const open = new Set(list.value.map(keyOf))
-      if ([...handled.value].some((k) => !open.has(k))) handled.value = new Set([...handled.value].filter((k) => open.has(k)))
+      if (res.ok) apply(await res.json())
     } catch {
-      /* the next poll retries */
+      /* the stream brings the next one */
     }
   }
 
@@ -75,16 +79,7 @@ export const useDialogs = () => {
     void reload()
   }
 
-  const onVisible = () => !document.hidden && void reload()
-  onMounted(() => {
-    void reload()
-    timer = setInterval(() => !document.hidden && void reload(), 5000)
-    document.addEventListener('visibilitychange', onVisible)
-  })
-  onUnmounted(() => {
-    clearInterval(timer)
-    document.removeEventListener('visibilitychange', onVisible)
-  })
+  useLive('dialogs', (data) => apply(data as JdDialog[]))
 
   return { current, more, multiple, answer }
 }

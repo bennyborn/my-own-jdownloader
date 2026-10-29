@@ -1,5 +1,6 @@
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ALL, currentDevice, devices, devicesLoaded, showingAll } from './devices'
+import { liveConnected, liveScope, useLive } from './live'
 import { showSuccess } from './toast'
 import type { DownloadsSnapshot } from './types'
 
@@ -15,12 +16,10 @@ const announceFinished = (device: string, before: DownloadsSnapshot | undefined,
   }
 }
 
-// Subscribes to the backend's server-sent events; EventSource reconnects automatically.
+// The downloads of the shown device (or all of them) from the live stream (live.ts).
 // One stream serves the shown device, or all online devices in the overview.
 export const useDownloads = () => {
   const snapshots = ref<Record<string, DownloadsSnapshot>>({})
-  const connected = ref(false)
-  let source: EventSource | undefined
 
   // The snapshot of the current device (the list and the status bar of the normal view).
   const snapshot = computed({
@@ -35,23 +34,15 @@ export const useDownloads = () => {
     return showingAll.value ? `${ALL}:${devices.value.filter((d) => d.online !== false).map((d) => d.id).join(',')}` : currentDevice.value
   })
 
-  const connect = () => {
-    source?.close()
-    if (!streamKey.value) return
-    source = new EventSource(`/api/events?device=${showingAll.value ? ALL : encodeURIComponent(currentDevice.value)}`)
-    source.onopen = () => (connected.value = true)
-    source.onerror = () => (connected.value = false)
-    source.addEventListener('downloads', (event) => {
-      const { device, ...rest } = JSON.parse((event as MessageEvent).data) as DownloadsSnapshot & { device: string }
-      // The first message of a device that was never polled is empty; the real one follows right away.
-      if (!rest.updatedAt) return
-      announceFinished(device, snapshots.value[device], rest)
-      snapshots.value = { ...snapshots.value, [device]: rest }
-    })
-  }
+  // The stream is the shared one (live.ts); this says for which devices the downloads are wanted.
+  watch(streamKey, () => (liveScope.value = { ...liveScope.value, device: streamKey.value ? (showingAll.value ? ALL : currentDevice.value) : '', rev: streamKey.value }), { immediate: true })
+  useLive('downloads', (data) => {
+    const { device, ...rest } = data as DownloadsSnapshot & { device: string }
+    // The first message of a device that was never polled is empty; the real one follows right away.
+    if (!rest.updatedAt) return
+    announceFinished(device, snapshots.value[device], rest)
+    snapshots.value = { ...snapshots.value, [device]: rest }
+  })
 
-  onMounted(() => watch(streamKey, connect, { immediate: true }))
-  onUnmounted(() => source?.close())
-
-  return { snapshot, snapshots, connected }
+  return { snapshot, snapshots, connected: liveConnected }
 }

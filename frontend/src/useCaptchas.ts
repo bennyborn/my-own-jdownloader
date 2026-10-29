@@ -1,5 +1,6 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { withDevice } from './devices'
+import { useLive } from './live'
 
 export interface CaptchaJob {
   id: number
@@ -14,14 +15,13 @@ export interface CaptchaJob {
   fetchedAt: number // browser time of the response, to count `remaining` down between polls
 }
 
-// Polls the open captcha jobs of all JDownloader devices (they have to be answered whichever device is shown). Image captchas are answered in the web UI (CaptchaDialog);
+// Follows the open captcha jobs of all JDownloader devices (they have to be answered whichever device is shown). Image captchas are answered in the web UI (CaptchaDialog);
 // token captchas (hCaptcha, reCAPTCHA, Turnstile) are handled by the browser extension.
 export const useCaptchas = () => {
   const jobs = ref<CaptchaJob[]>([])
   const handled = ref<Set<number>>(new Set()) // answered or skipped just now, hidden until JD drops them
   const dismissed = ref<Set<number>>(new Set()) // widget captchas whose alert was closed; the status bar button stays
   const urls = ref<Map<number, string>>(new Map())
-  let timer: ReturnType<typeof setInterval> | undefined
 
   // The page is looked up ahead of the click, so the button can be a plain link (no popup blocker).
   const loadUrl = async (id: number, device: string) => {
@@ -35,25 +35,29 @@ export const useCaptchas = () => {
       url.hash = `myjd-captcha=${id}&device=${encodeURIComponent(device)}`
       urls.value = new Map(urls.value).set(id, url.toString())
     } catch {
-      urls.value.delete(id) // tried again with the next poll
+      urls.value.delete(id) // tried again with the next update
     }
   }
 
+  const apply = (data: Omit<CaptchaJob, 'fetchedAt'>[]) => {
+    const fetchedAt = Date.now()
+    // Shortest time left first; all `remaining` values stem from the same response, so the order only changes when a captcha arrives or leaves.
+    const list = data.map((j) => ({ ...j, fetchedAt })).sort((a, b) => a.remaining - b.remaining || a.id - b.id)
+    jobs.value = list
+    for (const j of list) if (j.kind === 'widget' && !urls.value.has(j.id)) void loadUrl(j.id, j.device)
+    if ([...dismissed.value].some((id) => !list.some((j) => j.id === id))) dismissed.value = new Set([...dismissed.value].filter((id) => list.some((j) => j.id === id)))
+    const open = new Set(list.map((j) => j.id))
+    if ([...urls.value.keys()].some((id) => !open.has(id))) urls.value = new Map([...urls.value].filter(([id]) => open.has(id))) // ids can come back for another captcha
+    if ([...handled.value].some((id) => !open.has(id))) handled.value = new Set([...handled.value].filter((id) => open.has(id)))
+  }
+
+  // Looks now (after an answer); otherwise the stream brings the changes.
   const reload = async () => {
     try {
       const res = await fetch('/api/captcha')
-      if (!res.ok) return
-      const fetchedAt = Date.now()
-      // Shortest time left first; all `remaining` values stem from the same response, so the order only changes when a captcha arrives or leaves.
-      const list = ((await res.json()) as Omit<CaptchaJob, 'fetchedAt'>[]).map((j) => ({ ...j, fetchedAt })).sort((a, b) => a.remaining - b.remaining || a.id - b.id)
-      jobs.value = list
-      for (const j of list) if (j.kind === 'widget' && !urls.value.has(j.id)) void loadUrl(j.id, j.device)
-      if ([...dismissed.value].some((id) => !list.some((j) => j.id === id))) dismissed.value = new Set([...dismissed.value].filter((id) => list.some((j) => j.id === id)))
-      const open = new Set(list.map((j) => j.id))
-      if ([...urls.value.keys()].some((id) => !open.has(id))) urls.value = new Map([...urls.value].filter(([id]) => open.has(id))) // ids can come back for another captcha
-      if ([...handled.value].some((id) => !open.has(id))) handled.value = new Set([...handled.value].filter((id) => open.has(id)))
+      if (res.ok) apply(await res.json())
     } catch {
-      /* the next poll retries */
+      /* the stream brings the next one */
     }
   }
 
@@ -63,17 +67,7 @@ export const useCaptchas = () => {
   const dismiss = (id: number) => (dismissed.value = new Set(dismissed.value).add(id))
   const markHandled = (id: number) => (handled.value = new Set(handled.value).add(id))
 
-  // A hidden tab does not ask (every call goes on to the MyJDownloader API); coming back it looks at once.
-  const onVisible = () => !document.hidden && void reload()
-  onMounted(() => {
-    void reload()
-    timer = setInterval(() => !document.hidden && void reload(), 3000)
-    document.addEventListener('visibilitychange', onVisible)
-  })
-  onUnmounted(() => {
-    clearInterval(timer)
-    document.removeEventListener('visibilitychange', onVisible)
-  })
+  useLive('captcha', (data) => apply(data as Omit<CaptchaJob, 'fetchedAt'>[]))
 
   return { jobs, imageJobs, widgetJobs, alertJobs, dismiss, reload, markHandled }
 }

@@ -1,4 +1,4 @@
-import type { MyJdClient } from './myjd/client.js'
+import { DIRECT_POLL_MS, type MyJdClient } from './myjd/client.js'
 
 export interface SpeedSample {
   t: number // ms timestamp
@@ -31,7 +31,11 @@ export class BandwidthHistory {
   start(): void {
     if (this.timer) return
     this.ready = this.sample()
-    this.timer = setInterval(() => this.mode() === 'fast' && void this.sample(), this.intervalMs)
+    // Ticks every DIRECT_POLL_MS; a device that is reached directly is measured on every tick, the others every intervalMs.
+    this.timer = setInterval(() => {
+      const wait = this.client.isDirect(this.deviceId) ? DIRECT_POLL_MS : this.intervalMs
+      if (this.mode() === 'fast' && Date.now() - this.lastAt >= wait - 100) void this.sample()
+    }, DIRECT_POLL_MS)
   }
 
   stop(): void {

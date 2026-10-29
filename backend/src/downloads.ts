@@ -1,4 +1,4 @@
-import type { MyJdClient } from './myjd/client.js'
+import { DIRECT_POLL_MS, type MyJdClient } from './myjd/client.js'
 
 // What JD reports about unpacking: queued / running, done (successful) or failed. Undefined: nothing to unpack.
 export type Extraction = 'queued' | 'running' | 'done' | 'error'
@@ -68,6 +68,7 @@ export class DownloadsPoller {
   private snapshot: DownloadsSnapshot = { updatedAt: 0, packages: [], totalSpeed: 0, linkCount: 0, runningDownloads: 0, state: '' }
   private listeners = new Set<Listener>()
   private timer?: NodeJS.Timeout
+  private subscribed = false
   private polling = false
   private snapshotEpoch = -1 // what the client's change counter said when the snapshot was taken
 
@@ -88,14 +89,19 @@ export class DownloadsPoller {
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
-    if (!this.timer) {
-      void this.poll()
-      this.timer = setInterval(() => void this.poll(), this.intervalMs)
+    if (!this.subscribed) {
+      this.subscribed = true
+      const loop = async () => {
+        await this.poll()
+        if (this.subscribed) this.timer = setTimeout(loop, this.client.isDirect(this.deviceId) ? Math.min(this.intervalMs, DIRECT_POLL_MS) : this.intervalMs)
+      }
+      void loop()
     }
     return () => {
       this.listeners.delete(listener)
-      if (this.listeners.size === 0 && this.timer) {
-        clearInterval(this.timer)
+      if (this.listeners.size === 0 && this.subscribed) {
+        this.subscribed = false
+        clearTimeout(this.timer)
         this.timer = undefined
       }
     }
