@@ -212,7 +212,7 @@ reports, run `/config/list` with the pattern `.*` (all) or an interface name, wi
 
 ## MCP server
 
-`backend/src/mcp.ts` serves MCP (Streamable HTTP, stateless) on `/mcp`, behind the same Basic auth as the UI (any username, `UI_PASSWORD` as password). Point a client at `http://<host>:<APP_PORT>/mcp`, e.g. `claude mcp add --transport http jd http://<host>:20031/mcp --header "Authorization: Basic <base64 of x:password>"`.
+`backend/src/mcp.ts` serves MCP (Streamable HTTP, stateless) on `/mcp`, behind the same Basic auth as the UI (any username, `UI_PASSWORD` as password). Point a client at `http://<host>:<APP_PORT>/mcp`, e.g. `claude mcp add --transport http jd http://<host>:3000/mcp --header "Authorization: Basic <base64 of x:password>"`.
 
 - Read tools: `list_devices`, `search_settings` (the JD settings are searched, not listed), `list_settings_group`, `list_plugins`, `plugin_settings`, `list_downloads`, `package_links`, `list_linkgrabber`, `list_accounts`, `list_captchas`. Every tool takes an optional `device` (name or id).
 - Write tools (`set_setting`, `reset_setting`, `add_links`) only exist when writing is switched on (on the settings page; `MCP_WRITE=true` is the default until it was chosen there). Values are checked against the setting's type and options; secrets and the groups this app manages itself are refused.
