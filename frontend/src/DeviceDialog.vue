@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowUpCircle, Check, Layers, Server, ServerOff, X } from 'lucide-vue-next'
-import { ALL, devices, select, showingAll, currentDevice, updates } from './devices'
+import { ALL, anyUpdate, devices, select, showingAll, currentDevice, updates } from './devices'
 
 // Phone variant of the device switcher: opened from the "Devices" tab of the bottom bar.
 const open = defineModel<boolean>({ required: true })
@@ -21,13 +21,14 @@ const choose = (id: string) => {
         <li v-for="d in devices" :key="d.id" role="option" :aria-selected="!showingAll && d.id === currentDevice" :class="{ offline: d.online === false, active: !showingAll && d.id === currentDevice }" @click="choose(d.id)">
           <ServerOff v-if="d.online === false" :size="18" class="off" />
           <Server v-else :size="18" :class="{ on: d.online }" />
+          <span v-if="anyUpdate" class="slot"><ArrowUpCircle v-if="updates[d.id]" :size="16" class="update" title="Update available" /></span>
           <span class="label">{{ d.name }}</span>
-          <ArrowUpCircle v-if="updates[d.id]" :size="16" class="update" title="Update available" />
           <span v-if="d.online === false" class="state">offline</span>
           <Check v-else-if="!showingAll && d.id === currentDevice" :size="16" />
         </li>
         <li class="all" role="option" :aria-selected="showingAll" :class="{ active: showingAll }" @click="choose(ALL)">
           <Layers :size="18" />
+          <span v-if="anyUpdate" class="slot" />
           <span class="label">All devices</span>
           <Check v-if="showingAll" :size="16" />
         </li>
@@ -49,6 +50,7 @@ li.active { font-weight: 600; }
 li.offline { color: var(--muted); }
 li.all { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
 .update { flex: none; color: var(--extract); }
+.slot { display: inline-flex; flex: none; width: 16px; } /* keeps the names in one column, whether a device has an update or not */
 .on { color: var(--ok); }
 .off { color: var(--muted); }
 .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

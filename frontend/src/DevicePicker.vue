@@ -47,13 +47,14 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
       >
         <ServerOff v-if="d.online === false" :size="16" class="off" />
         <Server v-else :size="16" :class="{ on: d.online }" />
+        <span v-if="anyUpdate" class="slot"><ArrowUpCircle v-if="updates[d.id]" :size="14" class="update" title="A JDownloader update is available" /></span>
         <span class="label">{{ d.name }}</span>
-        <ArrowUpCircle v-if="updates[d.id]" :size="14" class="update" />
         <span v-if="d.online === false" class="state">offline</span>
         <Check v-else-if="!showingAll && d.id === modelValue" :size="14" />
       </li>
       <li v-if="withAll" class="all" role="option" :aria-selected="showingAll" :class="{ active: showingAll }" @click="choose(ALL, false)">
         <Layers :size="16" />
+        <span v-if="anyUpdate" class="slot" />
         <span class="label">All devices</span>
         <Check v-if="showingAll" :size="14" />
       </li>
@@ -72,6 +73,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 .trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trigger .name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .update { flex: none; color: var(--extract); }
+.slot { display: inline-flex; flex: none; width: 14px; } /* keeps the names in one column, whether a device has an update or not */
 .update-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--extract); }
 .on { color: var(--ok); }
 .off { color: var(--muted); }
