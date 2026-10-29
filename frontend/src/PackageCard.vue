@@ -6,8 +6,8 @@ import { vMarquee } from './marquee'
 import { expandedDownloads, linkAnchor, saveExpandedDownloads, selectedDownloadLinks, selectedDownloadPackages, selectedPackagesDevice } from './expandedState'
 import { showError } from './toast'
 import PriorityMark from './PriorityMark.vue'
-import { clearHovered, changeTick, menuOn, openMenu, setHovered, type Target } from './itemActions'
-import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { clearHovered, changeTick, menuOn, openMenu, setHovered, setMarked, type Target } from './itemActions'
+import { computed, onUnmounted, reactive, ref, watch, watchEffect } from 'vue'
 import PackageSlot from './PackageSlot.vue'
 import { formatBytes, formatLongEta, formatSpeed } from './format'
 import { coarsePointer, longPress } from './longPress'
@@ -112,6 +112,7 @@ const statusTip = (l: DownloadLink): string | undefined => {
 
 // The state shown at the right of a link: what JD reports (captcha, wait time, skipped) replaces the
 // raw status text that used to sit next to the host.
+const HOSTER_LIMIT = /limit|quota|exceed|reached|daily|within a certain time|too many|simultan|parallel|at a time|slots?\b|busy|overload|interval|another (file|download)|must wait|wait between|wait (before|until|for a free)|please wait|try (again|later|it later)|retry|ip (blocked|banned|in use)|erreicht|warte/i
 const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: string } => {
   const status = l.status ?? ''
   if (l.extraction === 'running' || l.extraction === 'queued') return { kind: 'extracting', text: 'extracting', detail: l.extraction === 'queued' ? 'queued' : '' }
@@ -119,6 +120,8 @@ const linkBadge = (l: DownloadLink): { kind: string; text: string; detail: strin
   if (l.extraction === 'done') return { kind: 'extracted', text: 'extracted', detail: '' }
   if (l.finished) return { kind: 'finished', text: 'finished', detail: '' }
   if (!l.running && !l.skipped && l.enabled && isErrorStatus(status)) return { kind: 'idle-error', text: 'idle', detail: status }
+  // A hoster limit ("You can't download more than one file within a certain time period", ...), with or without a wait time.
+  if (l.enabled && !l.skipped && HOSTER_LIMIT.test(status)) return { kind: 'hoster-limit', text: 'hoster limit', detail: /^wait\s+([^-–:]+)/i.exec(status)?.[1].trim() ?? '' }
   if (l.skipped) return { kind: 'skipped', text: 'skipped', detail: status.replace(/^skipped\s*-\s*/i, '') }
   if (l.running) {
     if (/captcha/i.test(status)) return { kind: 'captcha', text: 'captcha', detail: 'waiting for an answer' }
@@ -163,6 +166,14 @@ const linkTarget = (l: DownloadLink): Target => ({
   started: l.bytesLoaded > 0,
   selectedLinkIds: selectedDownloadLinks.value.has(l.uuid) && selectedDownloadLinks.value.size > 1 ? [...selectedDownloadLinks.value] : undefined
 })
+
+// A marked package or marked link of this card is what F2 and Del act on while the mouse is elsewhere.
+const markKey = Symbol('package card')
+watchEffect(() => {
+  const link = picked.value ? undefined : (links.value ?? []).find((l) => selectedDownloadLinks.value.has(l.uuid))
+  setMarked(markKey, picked.value ? pkgTarget.value : link ? linkTarget(link) : null)
+})
+onUnmounted(() => setMarked(markKey, null))
 
 const loadLinks = async () => {
   try {
@@ -278,7 +289,7 @@ onUnmounted(() => clearInterval(timer))
           <span>{{ formatBytes(l.bytesTotal) }}</span>
           <span class="sub">{{ l.running ? formatBytes(l.bytesLoaded) + ' loaded' : '' }}</span>
         </div>
-        <div class="cell state" :title="statusTip(l)">
+        <div class="cell state" :class="{ tip: statusTip(l) }" :title="statusTip(l)">
           <span class="badge" :class="linkBadge(l).kind"><PriorityMark :priority="l.priority" :size="12" /><OctagonPause v-if="l.stopMarked" :size="12" class="stopmark" aria-label="Stop mark" /><Zap v-if="showForced(l)" :size="12" class="forced" aria-label="Force-started" />{{ linkBadge(l).text }}</span>
           <span class="sub">{{ linkBadge(l).detail }}</span>
         </div>
@@ -287,7 +298,7 @@ onUnmounted(() => clearInterval(timer))
           <Package v-else-if="linkBadge(l).kind === 'extracting'" :size="16" />
           <PackageOpen v-else-if="linkBadge(l).kind === 'extracted'" :size="16" />
           <Check v-else-if="linkBadge(l).kind === 'finished'" :size="16" />
-          <Hourglass v-else-if="['waiting', 'captcha'].includes(linkBadge(l).kind)" :size="16" />
+          <Hourglass v-else-if="['waiting', 'captcha', 'hoster-limit'].includes(linkBadge(l).kind)" :size="16" />
           <TriangleAlert v-else-if="['extract-failed', 'idle-error'].includes(linkBadge(l).kind)" :size="16" />
           <SkipForward v-else-if="linkBadge(l).kind === 'skipped'" :size="16" />
           <PowerOff v-else-if="linkBadge(l).kind === 'disabled'" :size="16" />
@@ -323,7 +334,8 @@ onUnmounted(() => clearInterval(timer))
 .path svg { flex: none; }
 .path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 0.75rem; }
-.link .badge.captcha, .link .badge.skipped { color: #e0a030; }
+.link .badge.captcha, .link .badge.skipped, .link .badge.hoster-limit { color: #e0a030; }
+.link .cell.state.tip { cursor: help; } /* JD's full status text sits in the tooltip */
 .link .badge.waiting { color: var(--muted); }
 .head .stopmark { flex: none; color: #e0a030; }
 .link .badge .stopmark { margin-right: 4px; vertical-align: -1px; color: #e0a030; }

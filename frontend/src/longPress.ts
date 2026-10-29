@@ -15,8 +15,14 @@ const swallowNextClick = () => {
     e.preventDefault()
     e.stopPropagation()
   }
+  const drop = () => {
+    window.removeEventListener('click', swallow, true)
+    window.removeEventListener('pointerdown', drop, true)
+  }
   window.addEventListener('click', swallow, { capture: true, once: true })
-  setTimeout(() => window.removeEventListener('click', swallow, true), 1500)
+  // A new touch means the release click is over (or never came): it must not eat the next deliberate tap.
+  window.addEventListener('pointerdown', drop, { capture: true, once: true })
+  setTimeout(drop, 1500)
 }
 
 export const longPress = (down: PointerEvent, fire: () => void) => {

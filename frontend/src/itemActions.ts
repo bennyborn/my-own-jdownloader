@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, shallowReactive } from 'vue'
 import { askConfirm } from './confirm'
 import { askPrompt } from './prompt'
 import { progress, showSuccess } from './toast'
@@ -150,12 +150,25 @@ export const menuOn = (area: Area, kind: 'package' | 'link', id: number) =>
   menu.value?.target.area === area && menu.value.target.kind === kind && menu.value.target.id === id
 
 export const setHovered = (target: Target) => (hovered.value = target)
+// What is marked (ticked links, ctrl-clicked packages) in the lists currently shown; the keys F2 and Del use it when the mouse is not
+// over an item. Every list reports its own mark under a key of its own (null when it has none).
+const marked = shallowReactive(new Map<symbol, Target>())
+export const setMarked = (key: symbol, target: Target | null) => {
+  if (target) marked.set(key, target)
+  else marked.delete(key)
+}
+export const markedTarget = (): Target | undefined => marked.values().next().value
+
 export const clearHovered = (target: Target) => {
   if (hovered.value && hovered.value.kind === target.kind && hovered.value.id === target.id) hovered.value = null
 }
 
+// More than one package or link marked: actions like rename only make sense for a single item.
+export const isMulti = (t: Target) => !!t.selectedLinkIds || (t.mergeIds?.length ?? 0) > 1
+
 export const startRename = (target: Target) => {
   closeMenu()
+  if (isMulti(target)) return
   renaming.value = target
 }
 export const startVariants = (target: Target) => {

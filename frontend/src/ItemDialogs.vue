@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { withDevice } from './devices'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { actionError, choosingFolder, hovered, renaming, rename, setFolder, startRename } from './itemActions'
+import { confirmState } from './confirm'
+import { actionError, choosingFolder, hovered, isMulti, markedTarget, removeItem, renaming, rename, setFolder, startRename } from './itemActions'
 
 const nameInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
@@ -66,13 +67,23 @@ const submitFolder = async () => {
   }
 }
 
-// F2 renames whatever package or link the mouse is currently over.
+// F2 renames and Del acts on the marked package or link, or else on the one the mouse is over (Del asks first, like the menu entry).
+// Several marked items cannot be renamed at once.
 const onKey = (e: KeyboardEvent) => {
-  if (e.key !== 'F2' || renaming.value || choosingFolder.value || !hovered.value) return
+  if ((e.key !== 'F2' && e.key !== 'Delete') || renaming.value || choosingFolder.value || confirmState.value) return
+  const target = markedTarget() ?? hovered.value
+  if (!target) return
   const el = document.activeElement
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return
-  e.preventDefault()
-  startRename(hovered.value)
+  // A ticked checkbox keeps the focus, but is no reason to leave the key alone.
+  if ((el instanceof HTMLInputElement && el.type !== 'checkbox') || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return
+  if (e.key === 'F2') {
+    if (isMulti(target)) return
+    e.preventDefault()
+    startRename(target)
+  } else {
+    e.preventDefault()
+    void removeItem(target)
+  }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => window.removeEventListener('keydown', onKey))

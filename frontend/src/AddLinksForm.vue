@@ -2,7 +2,7 @@
 import { FileUp, FolderPen, List, Plus, X } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import DevicePicker from './DevicePicker.vue'
-import { currentDevice, devices, multiple, withDevice } from './devices'
+import { currentDevice, devices, multiple, showingAll, withDevice } from './devices'
 
 const emit = defineEmits<{ added: [device: string]; cancel: [] }>()
 
@@ -50,8 +50,8 @@ const overwritePackagizerRules = ref(true)
 const error = ref('')
 const busy = ref(false)
 
-// The device the links go to (each device has its own folders). The last choice is remembered in the browser
-// as long as that device is still known and online.
+// The device the links go to (each device has its own folders). On a single device that one is preselected; only in
+// the overview of all devices the last choice is remembered in the browser, as long as that device is still known and online.
 const TARGET_KEY = 'addLinksDevice'
 const storedTarget = () => {
   try {
@@ -61,7 +61,7 @@ const storedTarget = () => {
     return undefined
   }
 }
-const target = ref(storedTarget() ?? currentDevice.value)
+const target = ref((showingAll.value ? storedTarget() : undefined) ?? currentDevice.value)
 const loadFolders = async () => {
   const device = target.value
   try {
@@ -100,7 +100,7 @@ const load = async () => {
 onMounted(() => void load())
 watch(target, (id) => {
   try {
-    localStorage.setItem(TARGET_KEY, id)
+    if (showingAll.value) localStorage.setItem(TARGET_KEY, id)
   } catch {
     /* only a convenience */
   }

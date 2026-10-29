@@ -2,7 +2,7 @@
 import { ArchiveRestore, BrushCleaning, CircleCheck, Flag, KeyRound, Lock, RotateCcw, SkipForward, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { menuEntryOn as on } from './menuConfig'
-import { addArchivePassword, checkOnline, cleanupItem, closeMenu, resumeItem, setDownloadPassword, setPriority, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
+import { addArchivePassword, isMulti, checkOnline, cleanupItem, closeMenu, resumeItem, setDownloadPassword, setPriority, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
 const target = computed(() => menu.value?.target)
 // Starting only makes sense for what is waiting: not for a running or a finished download (JD has no per-download pause).
@@ -74,8 +74,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="menu && target" class="backdrop" :class="{ sheet }" @pointerdown="closeMenu" @contextmenu.prevent="closeMenu">
-    <ul ref="menuEl" class="menu" :class="{ sheet }" :style="sheet ? undefined : position" role="menu" @pointerdown.stop @contextmenu.prevent.stop>
+  <div v-if="menu && target" class="backdrop" :class="{ sheet }" @click="closeMenu" @contextmenu.prevent="closeMenu">
+    <ul ref="menuEl" class="menu" :class="{ sheet }" :style="sheet ? undefined : position" role="menu" @click.stop @contextmenu.prevent.stop>
       <li v-if="sheet" class="title" role="presentation">{{ target.name }}</li>
       <li v-if="stopsRunning">
         <button type="button" role="menuitem" @click="toggleEnabled(target)">
@@ -119,7 +119,7 @@ onUnmounted(() => {
       </li>
       <li v-if="stopsRunning || canStart || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1) || (on('stopMark') && target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || (on('resume') && target.area === 'downloads') || (on('extract') && hasArchiveEntries)" class="sep" role="separator" />
       <li v-if="on('rename')">
-        <button type="button" role="menuitem" @click="startRename(target)">
+        <button type="button" role="menuitem" :disabled="isMulti(target)" :title="isMulti(target) ? 'Only one item can be renamed at a time' : undefined" @click="startRename(target)">
           <Pencil :size="15" /> Rename <kbd>F2</kbd>
         </button>
       </li>
@@ -219,7 +219,7 @@ onUnmounted(() => {
       </li>
       <li>
         <button type="button" role="menuitem" class="danger" @click="removeItem(target)">
-          <Trash2 :size="15" /> Remove…
+          <Trash2 :size="15" /> Remove… <kbd>Del</kbd>
         </button>
       </li>
     </ul>
@@ -230,13 +230,15 @@ onUnmounted(() => {
 .backdrop { position: fixed; inset: 0; z-index: 200; }
 .menu { position: fixed; box-sizing: border-box; width: 240px; margin: 0; padding: 6px; list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }
 button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: none; border: 0; border-radius: 6px; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-button:hover:not(:disabled) { background: var(--hover); }
+@media (hover: hover) { button:hover:not(:disabled) { background: var(--hover); } } /* touch keeps :hover after a tap and looked like a marked entry */
+button:active:not(:disabled) { background: var(--hover); }
 button:disabled { opacity: 0.4; cursor: default; }
-button.danger:hover:not(:disabled) { color: #d14343; }
+button.danger:hover:not(:disabled), button.danger:active:not(:disabled) { color: #d14343; }
 .sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .box { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; border: 1px solid var(--border); border-radius: 4px; }
 .title { padding: 6px 10px 10px; color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.backdrop.sheet { background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(var(--overlay-blur)); -webkit-backdrop-filter: blur(var(--overlay-blur)); animation: fade 0.2s ease-out; }
+/* No blur: the item the menu acts on stays visible above the sheet (moving it up / down is watched live). */
+.backdrop.sheet { background: rgba(0, 0, 0, 0.2); animation: fade 0.2s ease-out; }
 .menu.sheet {
   left: 0; right: 0; bottom: 0; width: 100%; max-height: 50vh; max-height: 50dvh; overflow-y: auto; overscroll-behavior: contain;
   padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 16px 16px 0 0;

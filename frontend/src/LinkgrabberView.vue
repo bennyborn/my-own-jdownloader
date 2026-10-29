@@ -4,7 +4,7 @@ import { coarsePointer, longPress } from './longPress'
 import { toneIcon } from './iconTone'
 import { withDevice } from './devices'
 import { ChevronRight, GripVertical, CircleCheck, CircleHelp, CircleX, Folder, Inbox, PowerOff, Loader, PackagePlus, Trash2, X } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { askConfirm } from './confirm'
 import { useDragReorder } from './dragReorder'
 import { expandedGrabber } from './expandedState'
@@ -13,7 +13,7 @@ import PackageSlot from './PackageSlot.vue'
 import LoadingState from './LoadingState.vue'
 import { showError } from './toast'
 import PriorityMark from './PriorityMark.vue'
-import { clearHovered, menuOn, movedTick, openMenu, setHovered, type Target } from './itemActions'
+import { clearHovered, menuOn, movedTick, openMenu, setHovered, setMarked, type Target } from './itemActions'
 import type { GrabberLink, GrabberState } from './types'
 
 // device: the device this list belongs to (the overview shows several lists); compact: a short note instead of the big empty state.
@@ -60,6 +60,13 @@ const linkTarget = (l: GrabberLink): Target => ({
   variantId: l.variant?.id,
   selectedLinkIds: selected.value.has(l.uuid) && selected.value.size > 1 ? [...selected.value] : undefined
 })
+// The first ticked link is what F2 and Del act on while the mouse is elsewhere (with several ticked, linkTarget carries all of them).
+const markKey = Symbol('linkgrabber')
+watchEffect(() => {
+  const link = allLinks.value.find((l) => selected.value.has(l.uuid))
+  setMarked(markKey, link ? linkTarget(link) : null)
+})
+onUnmounted(() => setMarked(markKey, null))
 const countBy = (links: GrabberLink[], availability: string) => links.filter((l) => l.availability === availability).length
 const hasOffline = (p: { links: GrabberLink[] }) => p.links.some((l) => l.availability === 'OFFLINE')
 const isPackageDisabled = (p: { enabled: boolean; links: GrabberLink[] }) => !p.enabled || (p.links.length > 0 && p.links.every((l) => !l.enabled))
