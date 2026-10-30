@@ -8,6 +8,8 @@
         <meta property="og:title" content="My Own JDownloader" />
         <meta property="og:description" content="A self-hosted web UI for your own JDownloader." />
         <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://myownjdownloader.org/" />
+        <link rel="canonical" href="https://myownjdownloader.org/" />
         <link rel="icon" type="image/svg+xml" href="img/logo-color.svg" />
         <link rel="apple-touch-icon" href="img/apple-touch-icon.png" />
         <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
@@ -120,6 +122,7 @@
                         <a href="#features">Features</a>
                         <a href="#extension">Extension</a>
                         <a href="#start">Quick start</a>
+                        <a href="#get">Downloads</a>
                     </nav>
                     <button type="button" id="theme" class="navbtn sq themebtn" aria-label="Switch theme">
                         <svg class="i sun" aria-hidden="true"><use href="#i-sun" /></svg><svg class="i moon" aria-hidden="true"><use href="#i-moon" /></svg>
@@ -420,6 +423,46 @@
                     </span>
                     <h3>MCP server</h3>
                     <p>Claude and other assistants can look at downloads and, if you allow it, add links. There is deliberately no tool to stop, pause or delete downloads.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="get" class="wrap section">
+            <div class="eyebrow">Downloads</div>
+            <h2 class="h2 spaced">Ready-made clients.</h2>
+            <div class="cards">
+                <div class="card">
+                    <span class="ico">
+                        <svg class="i" aria-hidden="true"><use href="#i-smartphone" /></svg>
+                    </span>
+                    <h3>Android app</h3>
+                    <p>The APK from the latest release. It updates itself from your backend afterwards. Android asks once to allow the install.</p>
+                    <a class="lnk" href="https://github.com/bennyborn/my-own-jdownloader/releases/latest/download/my-own-jdownloader.apk">
+                        Download the APK
+                        <svg class="i" aria-hidden="true"><use href="#i-download" /></svg>
+                    </a>
+                </div>
+                <div class="card">
+                    <span class="ico">
+                        <svg class="i" aria-hidden="true"><use href="#i-puzzle" /></svg>
+                    </span>
+                    <h3>Firefox</h3>
+                    <p>Signed by Mozilla, so Firefox installs it right away and updates it from GitHub. Open the options and enter your backend address.</p>
+                    <a class="lnk" href="https://github.com/bennyborn/my-own-jdownloader/releases/latest/download/my-own-jdownloader-firefox.xpi">
+                        Install the extension
+                        <svg class="i" aria-hidden="true"><use href="#i-download" /></svg>
+                    </a>
+                </div>
+                <div class="card">
+                    <span class="ico">
+                        <svg class="i" aria-hidden="true"><use href="#i-puzzle" /></svg>
+                    </span>
+                    <h3>Chrome, Edge, Brave</h3>
+                    <p>A ZIP to unpack. Open the extensions page, turn on developer mode and load the folder as unpacked extension.</p>
+                    <a class="lnk" href="https://github.com/bennyborn/my-own-jdownloader/releases/latest/download/my-own-jdownloader-chrome.zip">
+                        Download the ZIP
+                        <svg class="i" aria-hidden="true"><use href="#i-download" /></svg>
+                    </a>
                 </div>
             </div>
         </section>

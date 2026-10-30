@@ -38,8 +38,10 @@ jobs:
         env:
           WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          # web-ext's own dependencies are deprecated (not ours): keep npm's notices out of the log
+          NPM_CONFIG_LOGLEVEL: error
         run: |
-          npx --yes web-ext@8.3.0 sign --source-dir build/firefox --artifacts-dir build/signed --channel unlisted
+          npx --yes web-ext@10.8.0 sign --source-dir build/firefox --artifacts-dir build/signed --channel unlisted
           xpi="out/my-own-jdownloader-firefox-$VERSION.xpi"
           cp build/signed/*.xpi "$xpi"
           id=$(node -p "require('./extension/manifest.json').browser_specific_settings.gecko.id")
@@ -48,6 +50,11 @@ jobs:
             const [id, version, link, sha] = process.argv.slice(1)
             console.log(JSON.stringify({ addons: { [id]: { updates: [{ version, update_link: link, update_hash: "sha256:" + sha }] } } }, null, 2))
           ' "$id" "$VERSION" "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/my-own-jdownloader-firefox-$VERSION.xpi" "$sha" > out/firefox-updates.json
+
+      - name: Names without the version, for stable download links
+        run: |
+          cp "out/my-own-jdownloader-chrome-$VERSION.zip" out/my-own-jdownloader-chrome.zip
+          cp "out/my-own-jdownloader-firefox-$VERSION.xpi" out/my-own-jdownloader-firefox.xpi
 
       - name: Build the Android app
         env:
