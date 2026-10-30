@@ -33,6 +33,8 @@ type Manifest = Record<string, unknown>
 export interface ExtensionContext {
   publicUrl: string
   firefoxId: string
+  // Where Firefox asks for updates when it is not this backend (the release build, scripts/release-extension.mjs).
+  updateUrl?: string
 }
 
 export interface ExtensionTarget {
@@ -61,7 +63,7 @@ export const EXTENSION_TARGETS: Record<string, ExtensionTarget> = {
     extra: ({ publicUrl }) => ({ 'defaults.json': JSON.stringify({ backendUrl: publicUrl }) + '\n' }),
     // Firefox has no service worker for extensions (background scripts instead). It installs only what Mozilla signed (firefox.ts) and
     // updates an installed extension by itself from the `update_url`, which has to be https (the backend answers it).
-    manifest: ({ background, browser_specific_settings, ...rest }, { publicUrl, firefoxId }) => {
+    manifest: ({ background, browser_specific_settings, ...rest }, { publicUrl, firefoxId, updateUrl }) => {
       const { service_worker, ...more } = background as { service_worker: string }
       const gecko = (browser_specific_settings as { gecko: Manifest }).gecko
       return {
@@ -73,7 +75,7 @@ export const EXTENSION_TARGETS: Record<string, ExtensionTarget> = {
             id: firefoxId,
             // The extension sends what it handles to the backend of its owner only, nothing else.
             data_collection_permissions: { required: ['none'] },
-            update_url: `${publicUrl}/api/extension/firefox/updates.json`
+            update_url: updateUrl ?? `${publicUrl}/api/extension/firefox/updates.json`
           }
         }
       }

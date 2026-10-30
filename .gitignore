@@ -4,3 +4,6 @@ dist/
 *.log
 data/
 compose.override.yaml
+*.jks
+*.keystore
+*.b64

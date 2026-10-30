@@ -1,0 +1,76 @@
+# A release is made by pushing a tag: v<version of extension/manifest.json>, e.g. v0.3.8.
+# Builds the Chrome ZIP, the Firefox XPI (signed by Mozilla, unlisted) and the Android APK, and attaches them to the GitHub release.
+# Secrets (repository settings > Environments > release): AMO_JWT_ISSUER, AMO_JWT_SECRET, ANDROID_KEYSTORE_BASE64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Only this job sees them, and only for a tag.
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the tag against the extension version
+        run: |
+          version=$(node -p "require('./extension/manifest.json').version")
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "Tag $GITHUB_REF_NAME does not match extension version $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build the extension packages
+        run: |
+          npm ci --workspace backend --include-workspace-root=false
+          npm run build -w backend
+          node scripts/release-extension.mjs build "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/firefox-updates.json"
+          mkdir -p out
+          (cd build/chrome && zip -qr -X "../../out/my-own-jdownloader-chrome-$VERSION.zip" .)
+
+      - name: Sign the Firefox extension at Mozilla
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          npx --yes web-ext@8.3.0 sign --source-dir build/firefox --artifacts-dir build/signed --channel unlisted
+          xpi="out/my-own-jdownloader-firefox-$VERSION.xpi"
+          cp build/signed/*.xpi "$xpi"
+          id=$(node -p "require('./extension/manifest.json').browser_specific_settings.gecko.id")
+          sha=$(sha256sum "$xpi" | cut -d' ' -f1)
+          node -e '
+            const [id, version, link, sha] = process.argv.slice(1)
+            console.log(JSON.stringify({ addons: { [id]: { updates: [{ version, update_link: link, update_hash: "sha256:" + sha }] } } }, null, 2))
+          ' "$id" "$VERSION" "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/my-own-jdownloader-firefox-$VERSION.xpi" "$sha" > out/firefox-updates.json
+
+      - name: Build the Android app
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          keys=$RUNNER_TEMP/keys
+          mkdir -p "$keys"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keys/release.jks"
+          docker build -q -t myjd-android android
+          code=$(( $(date +%s) / 60 ))
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e GRADLE_USER_HOME=/tmp/gradle \
+            -v "$PWD/android":/project -v "$keys":/keys:ro \
+            -e ANDROID_KEYSTORE_FILE=/keys/release.jks -e ANDROID_KEYSTORE_PASSWORD -e ANDROID_KEY_ALIAS -e ANDROID_KEY_PASSWORD \
+            myjd-android gradle --no-daemon -q assembleRelease -PversionCode=$code
+          cp android/app/build/outputs/apk/release/app-release.apk out/my-own-jdownloader.apk
+          rm -rf "$keys"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd out && sha256sum * > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" out/* --title "$GITHUB_REF_NAME" --generate-notes
