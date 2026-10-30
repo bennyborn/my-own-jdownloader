@@ -18,8 +18,19 @@ onMounted(() => {
   }
 })
 
+// Colours fade over a short moment. Only colour properties transition (the knob keeps its own slide),
+// so nothing heavy is repainted; the rule is removed again afterwards.
+const fade = () => {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const style = document.createElement('style')
+  style.textContent = '*:not(.knob),*::before,*::after{transition:background-color .35s ease,color .35s ease,border-color .35s ease,fill .35s ease,stroke .35s ease!important}'
+  document.head.appendChild(style)
+  setTimeout(() => style.remove(), 500)
+}
+
 const toggle = () => {
   dark.value = !dark.value
+  fade()
   apply()
   try {
     localStorage.setItem('theme', dark.value ? 'dark' : 'light')
