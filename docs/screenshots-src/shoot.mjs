@@ -42,6 +42,23 @@ const speedAt = (age) => {
   const dip = 1 - 0.38 * Math.exp(-(((t - 150) / 22) ** 2))
   return Math.max(0, base * ramp * dip) * MB
 }
+const grabberPackages = [
+  { uuid: 9001, name: 'Blender Foundation - Open Movies', enabled: true, bytesTotal: 9.6 * GB, childCount: 3, hosts: ['rapidgator.net', 'ddownload.com'], saveTo: '/downloads/Movies', links: [
+    { uuid: 9101, packageUUID: 9001, name: 'Sintel.2010.1080p.BluRay.x264.mkv', host: 'rapidgator.net', enabled: true, bytesTotal: 4.2 * GB, availability: 'ONLINE' },
+    { uuid: 9102, packageUUID: 9001, name: 'Tears.of.Steel.2012.1080p.BluRay.x264.mkv', host: 'ddownload.com', enabled: true, bytesTotal: 3.9 * GB, availability: 'ONLINE' },
+    { uuid: 9103, packageUUID: 9001, name: 'Big.Buck.Bunny.2008.1080p.BluRay.x264.mkv', host: 'rapidgator.net', enabled: true, bytesTotal: 1.5 * GB, availability: 'ONLINE' }
+  ] },
+  { uuid: 9002, name: 'debian-12.7.0-amd64-DVD-1', enabled: true, bytesTotal: 3.9 * GB, childCount: 1, hosts: ['mega.nz'], saveTo: '/downloads/ISOs', links: [
+    { uuid: 9201, packageUUID: 9002, name: 'debian-12.7.0-amd64-DVD-1.iso', host: 'mega.nz', enabled: true, bytesTotal: 3.9 * GB, availability: 'ONLINE' }
+  ] },
+  { uuid: 9003, name: 'Kosmos.Documentary.S01', enabled: true, bytesTotal: 7.3 * GB, childCount: 3, hosts: ['nitroflare.com', '1fichier.com'], saveTo: '/downloads/Series', links: [
+    { uuid: 9301, packageUUID: 9003, name: 'Kosmos.S01E01.1080p.WEB-DL.mkv', host: 'nitroflare.com', enabled: true, bytesTotal: 2.5 * GB, availability: 'ONLINE' },
+    { uuid: 9302, packageUUID: 9003, name: 'Kosmos.S01E02.1080p.WEB-DL.mkv', host: 'nitroflare.com', enabled: true, bytesTotal: 2.4 * GB, availability: 'ONLINE' },
+    { uuid: 9303, packageUUID: 9003, name: 'Kosmos.S01E03.1080p.WEB-DL.mkv', host: '1fichier.com', enabled: true, bytesTotal: 2.4 * GB, availability: 'OFFLINE' }
+  ] }
+]
+const grabber = { device: DEV, collecting: false, packages: grabberPackages }
+
 const total = packages.reduce((s, p) => s + p.speed, 0)
 
 const snapshot = () => ({ device: DEV, updatedAt: Date.now(), packages, totalSpeed: total, linkCount: packages.reduce((n, p) => n + p.childCount, 0), runningDownloads: 4, state: 'running' })
@@ -62,7 +79,7 @@ const fakeStream = `(() => {
         send('dialogs', [])
         send('devices', state.devices)
         send('downloads', { ...state.snapshot, updatedAt: Date.now() })
-        send('grabber', { device: ${JSON.stringify(DEV)}, collecting: false, packages: [] })
+        send('grabber', ${JSON.stringify(grabber)})
       }, 50)
     }
     close() {}
@@ -82,7 +99,7 @@ const shoot = async (name, { viewport, mobile, scheme = 'dark', expand = true, s
     isMobile: mobile,
     hasTouch: mobile,
     colorScheme: scheme,
-    locale: 'de-DE',
+    locale: process.env.LOCALE ?? 'de-DE',
     ...(process.env.UI_PASSWORD ? { httpCredentials: { username: 'x', password: process.env.UI_PASSWORD } } : {})
   })
   await context.addInitScript(fakeStream)
@@ -95,7 +112,7 @@ const shoot = async (name, { viewport, mobile, scheme = 'dark', expand = true, s
     if (path === '/api/captcha' || path === '/api/dialogs') return json(route, [])
     if (path === '/api/update') return json(route, { available: false })
     if (path === '/api/jd-settings') return json(route, { pauseSpeed: 0, speedLimit: 0 })
-    if (path === '/api/linkgrabber') return json(route, { collecting: false, packages: [] })
+    if (path === '/api/linkgrabber') return json(route, { collecting: false, packages: grabberPackages })
     if (path === '/api/speed-history') {
       const now = Date.now()
       const samples = []
@@ -127,16 +144,23 @@ const shoot = async (name, { viewport, mobile, scheme = 'dark', expand = true, s
 const expandMovie = async (page) => {
   await page.locator('.card, article, .package').filter({ hasText: '2001: Odyssee' }).first().locator('button, [role=button]').first().click().catch(() => undefined)
 }
-const shots = [
-  ['desktop', { viewport: { width: 960, height: 1040 }, mobile: false, scale: 2 }],
-  ['mobile', { viewport: { width: 390, height: 844 }, mobile: true, scale: 3, expand: false }]
-]
+const siteShots = []
+for (const scheme of ['light', 'dark']) {
+  const desktop = { viewport: { width: 1280, height: 800 }, mobile: false, scale: 2, scheme }
+  siteShots.push([`site-downloads-${scheme}`, desktop], [`site-linkgrabber-${scheme}`, { ...desktop, tab: 'linkgrabber', expand: false }], [`site-settings-${process.env.SECTION ?? 'plugins'}-${scheme}`, { ...desktop, tab: `settings/${process.env.SECTION ?? 'plugins'}`, expand: false }])
+}
+const shots = process.env.SITE
+  ? siteShots
+  : [
+      ['desktop', { viewport: { width: 960, height: 1040 }, mobile: false, scale: 2 }],
+      ['mobile', { viewport: { width: 390, height: 844 }, mobile: true, scale: 3, expand: false }]
+    ]
 for (const [name, options] of shots) {
   const { page, context } = await shoot(name, options)
   if (options.expand !== false) await page.getByText('2001: A Space Odyssey').first().locator('xpath=ancestor::*[contains(@class,"card") or self::article][1]').locator('button').first().click().catch((e) => console.log('expand failed', e.message))
   await page.waitForTimeout(1500)
   await page.screenshot({ path: `/shots/work/${name}.png` })
-  await frameImage(browser, `/shots/work/${name}.png`)
+  await frameImage(browser, `/shots/work/${name}.png`, options.scheme === 'light' ? '#d0d7de' : undefined)
   await context.close()
 }
 await browser.close()
