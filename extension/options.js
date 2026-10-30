@@ -89,20 +89,28 @@ const say = (text, err = false) => {
   updateMsg.textContent = text
 }
 let pending = null // the newer version, once known
-const showUpdate = (version) => {
+let pendingSource = 'backend' // where it is: on the backend, or (a backend without an extension) at GitHub
+const showUpdate = (version, source = 'backend') => {
   pending = version
-  updateButton.textContent = version ? `Update to ${version}` : 'Check for updates'
+  pendingSource = source
+  updateButton.textContent = version ? (source === 'github' ? `Show version ${version}` : `Update to ${version}`) : 'Check for updates'
 }
 void (async () => {
-  const { localVersion, checkForUpdate, applyUpdate, canSelfUpdate, isFirefox } = await import('./update.js')
+  const { localVersion, checkForUpdate, applyUpdate, canSelfUpdate, isFirefox, RELEASE_PAGE } = await import('./update.js')
   document.getElementById('version').textContent = localVersion()
-  const { update } = await chrome.storage.local.get('update')
+  const { update, updateSource } = await chrome.storage.local.get(['update', 'updateSource'])
   const { backendUrl } = await (await import('./api.js')).getSettings()
-  showUpdate(update ?? null)
+  showUpdate(update ?? null, updateSource ?? 'backend')
   if (update) say(`Version ${update} is available.`)
   updateButton.addEventListener('click', async () => {
     updateButton.disabled = true
     try {
+      if (pending && pendingSource === 'github') {
+        // Nothing to install from the backend: the release page has the ZIP (Chrome) and Firefox updates itself.
+        await chrome.tabs.create({ url: RELEASE_PAGE })
+        say(isFirefox ? 'Firefox installs it by itself.' : 'Download the ZIP, unpack it over the extension folder and reload the extension.')
+        return
+      }
       if (pending) {
         if (isFirefox) throw new Error('Firefox installs it by itself; to hurry it up open about:addons, the gear and "Check for Updates"')
         if (!canSelfUpdate()) throw new Error('This browser cannot write the extension folder: download the ZIP and load it again')
@@ -110,9 +118,9 @@ void (async () => {
         return
       }
       say('Checking…')
-      const { version, update } = await checkForUpdate()
-      showUpdate(update)
-      say(update ? `Version ${update} is available.` : `Up to date (the backend ships ${version}).`)
+      const { version, update, source } = await checkForUpdate()
+      showUpdate(update, source)
+      say(update ? `Version ${update} is available.` : source === 'github' ? `Up to date (${version} is the newest release).` : `Up to date (the backend ships ${version}).`)
     } catch (e) {
       say(e?.name === 'AbortError' ? 'Cancelled.' : e instanceof Error ? e.message : String(e), e?.name !== 'AbortError')
     } finally {
@@ -120,7 +128,7 @@ void (async () => {
     }
   })
   // Look quietly when the page opens (a failing backend is not worth a message here, "Check" shows it).
-  if (backendUrl) checkForUpdate().then(({ update }) => update && (showUpdate(update), say(`Version ${update} is available.`)), () => {})
+  if (backendUrl) checkForUpdate().then(({ update, source }) => update && (showUpdate(update, source), say(`Version ${update} is available.`)), () => {})
 })()
 
 // Firefox asks for the access to other websites on its own terms: the user may have switched it off (about:addons > the extension > Permissions).

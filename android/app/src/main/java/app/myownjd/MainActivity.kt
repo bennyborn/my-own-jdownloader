@@ -136,7 +136,7 @@ class MainActivity : GuardedActivity() {
             if (isFinishing || isDestroyed) return@runOnUiThread
             android.app.AlertDialog.Builder(this)
                 .setTitle("Update available")
-                .setMessage("Version ${state.name} of the app is on your backend. Download and install it now?")
+                .setMessage("Version ${state.name} of the app is available. Download and install it now?")
                 .setPositiveButton("Install") { _, _ -> Updater.install(this) }
                 .setNegativeButton("Later", null)
                 .show()

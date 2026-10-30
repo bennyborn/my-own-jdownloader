@@ -14,7 +14,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-// Updates the app from the APK the backend offers (/api/app). Android never installs silently: the app downloads and checks the file,
+// Updates the app from the APK the backend offers (/api/app); a backend with none sends it to GitHub (release.json of the latest release), but only
+// if that release does not need a newer backend than the one in use. Android never installs silently: the app downloads and checks the file,
 // the system then asks the user once. Nothing runs on a timer: the check happens at the start and on the button in the settings.
 object Updater {
     // kind: idle | checking | current | unavailable | available | downloading | installing | error
@@ -27,7 +28,10 @@ object Updater {
     // The start check runs once per process.
     var checkedAtStart = false
 
-    private class Offer(val code: Long, val name: String, val sha256: String)
+    private const val RELEASE_INFO = "https://github.com/bennyborn/my-own-jdownloader/releases/latest/download/release.json"
+
+    // url: where to download it; null = from the backend (with its password, which must never go anywhere else).
+    private class Offer(val code: Long, val name: String, val sha256: String, val url: String? = null)
     @Volatile private var offer: Offer? = null
 
     fun installedCode(c: Context): Long = c.packageManager.getPackageInfo(c.packageName, 0).longVersionCode
@@ -58,8 +62,7 @@ object Updater {
                 val json = JSONObject(res.body)
                 val code = json.optLong("versionCode", 0)
                 if (!json.optBoolean("available") || code == 0L) {
-                    offer = null
-                    set("unavailable", message = "The backend has no app to offer")
+                    checkGitHub(ctx, base)
                 } else if (code > installedCode(ctx)) {
                     offer = Offer(code, json.optString("versionName"), json.optString("sha256"))
                     set("available", json.optString("versionName"))
@@ -71,6 +74,39 @@ object Updater {
                 set("error", message = e.message ?: "The check failed")
             }
         }.start()
+    }
+
+    // The backend has no app: the latest release at GitHub, if this backend is new enough for it (the release says which API level it needs).
+    private fun checkGitHub(ctx: Context, base: String) {
+        val health = Api.request(base, Config.password(ctx), "GET", "/api/health")
+        if (health.status != 200) throw java.io.IOException("HTTP ${health.status}")
+        val backendLevel = JSONObject(health.body).optInt("apiLevel", 0) // an older backend does not tell: level 0
+        val conn = URL(RELEASE_INFO).openConnection() as HttpURLConnection
+        val info = try {
+            conn.connectTimeout = 8000
+            conn.readTimeout = 15000
+            if (conn.responseCode != 200) throw java.io.IOException("GitHub: HTTP ${conn.responseCode}")
+            JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            conn.disconnect()
+        }
+        val apk = info.getJSONObject("apk")
+        val code = apk.optLong("versionCode", 0)
+        val name = apk.optString("versionName")
+        val url = apk.optString("url")
+        if (code == 0L || apk.optString("sha256").isEmpty() || !url.startsWith("https://")) {
+            offer = null
+            set("unavailable", message = "The backend has no app to offer")
+        } else if (code <= installedCode(ctx)) {
+            offer = null
+            set("current")
+        } else if (backendLevel < info.optInt("requiresApi", 0)) {
+            offer = null
+            set("unavailable", message = "Version ${info.optString("version")} is out, but it needs a newer backend than yours. Update the backend first.")
+        } else {
+            offer = Offer(code, name, apk.getString("sha256"), url)
+            set("available", name)
+        }
     }
 
     // Downloads the offered APK into the cache, checks it and hands it to the system's installer.
@@ -88,7 +124,8 @@ object Updater {
         Thread {
             val file = File(ctx.cacheDir, "update.apk")
             try {
-                val conn = open(base, Config.password(ctx), "/api/app/my-own-jdownloader.apk")
+                val conn = if (current.url != null) (URL(current.url).openConnection() as HttpURLConnection).apply { connectTimeout = 8000; readTimeout = 30000 }
+                else open(base, Config.password(ctx), "/api/app/my-own-jdownloader.apk")
                 try {
                     if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
                     val digest = MessageDigest.getInstance("SHA-256")

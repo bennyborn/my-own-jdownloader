@@ -42,9 +42,10 @@ export const getCnlTarget = async () => {
 
 // kind: 'config' (no backend URL), 'network' (not reachable), 'auth' (wrong password), 'http' (other)
 export class ApiError extends Error {
-  constructor(message, kind) {
+  constructor(message, kind, status) {
     super(message)
     this.kind = kind
+    this.status = status
   }
 }
 
@@ -65,7 +66,7 @@ const request = async (path, init = {}) => {
     } catch {
       /* keep the status */
     }
-    throw new ApiError(message, res.status === 401 ? 'auth' : 'http')
+    throw new ApiError(message, res.status === 401 ? 'auth' : 'http', res.status)
   }
   return res
 }

@@ -35,12 +35,37 @@ const isNewer = (a, b) => {
   return false
 }
 
-// Asks the backend which version it ships; the result is kept for the popup and the settings page ("update" = the newer version, or null).
+export const RELEASE_PAGE = 'https://github.com/bennyborn/my-own-jdownloader/releases/latest'
+const RELEASE_INFO = `${RELEASE_PAGE}/download/release.json`
+
+// The backend ships no extension: the latest release at GitHub, if this backend is new enough for it (release.json says which API level
+// it needs; a backend that does not tell is level 0). The extension is not installed from there, only pointed at (RELEASE_PAGE).
+const checkGitHub = async () => {
+  const { apiLevel = 0 } = await api('/api/health')
+  const res = await fetch(RELEASE_INFO).catch(() => null)
+  if (!res?.ok) throw new Error('Could not look at the releases on GitHub')
+  const info = await res.json()
+  if (!isNewer(info.version, localVersion())) return { version: info.version, update: null, source: 'github' }
+  if (apiLevel < (info.requiresApi ?? 0)) {
+    await chrome.storage.local.set({ update: null, updateSource: null })
+    throw new Error(`Version ${info.version} is out, but it needs a newer backend than yours. Update the backend first.`)
+  }
+  return { version: info.version, update: info.version, source: 'github' }
+}
+
+// Asks the backend which version it ships (one without any extension: GitHub); the result is kept for the popup and the settings page
+// ("update" = the newer version, or null; "source" = backend | github).
 export const checkForUpdate = async () => {
-  const { version } = await api(`/api/extension/${TARGET}`)
-  const update = isNewer(version, localVersion()) ? version : null
-  await chrome.storage.local.set({ update })
-  return { version, update }
+  let result
+  try {
+    const { version } = await api(`/api/extension/${TARGET}`)
+    result = { version, update: isNewer(version, localVersion()) ? version : null, source: 'backend' }
+  } catch (e) {
+    if (e?.status !== 404) throw e
+    result = await checkGitHub()
+  }
+  await chrome.storage.local.set({ update: result.update, updateSource: result.update ? result.source : null })
+  return result
 }
 
 const sha256 = async (bytes) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('')

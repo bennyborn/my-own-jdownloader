@@ -1,5 +1,6 @@
 # A release is made by pushing a tag: v<version of extension/manifest.json>, e.g. v0.3.8.
 # Builds the Chrome ZIP, the Firefox XPI (signed by Mozilla, unlisted) and the Android APK, and attaches them to the GitHub release.
+# compat.json says which backend level this release needs (see API_LEVEL in backend/src/index.ts); the release carries it as release.json.
 # Secrets (repository settings > Environments > release): AMO_JWT_ISSUER, AMO_JWT_SECRET, ANDROID_KEYSTORE_BASE64,
 # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Only this job sees them, and only for a tag.
 name: Release
@@ -32,7 +33,7 @@ jobs:
           npm run build -w backend
           node scripts/release-extension.mjs build "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/firefox-updates.json"
           mkdir -p out
-          (cd build/chrome && zip -qr -X "../../out/my-own-jdownloader-chrome-$VERSION.zip" .)
+          (cd build/chrome && zip -qr -X "../../out/my-own-jdownloader-chrome.zip" .)
 
       - name: Sign the Firefox extension at Mozilla
         env:
@@ -42,19 +43,14 @@ jobs:
           NPM_CONFIG_LOGLEVEL: error
         run: |
           npx --yes web-ext@10.8.0 sign --source-dir build/firefox --artifacts-dir build/signed --channel unlisted
-          xpi="out/my-own-jdownloader-firefox-$VERSION.xpi"
+          xpi="out/my-own-jdownloader-firefox.xpi"
           cp build/signed/*.xpi "$xpi"
           id=$(node -p "require('./extension/manifest.json').browser_specific_settings.gecko.id")
           sha=$(sha256sum "$xpi" | cut -d' ' -f1)
           node -e '
             const [id, version, link, sha] = process.argv.slice(1)
             console.log(JSON.stringify({ addons: { [id]: { updates: [{ version, update_link: link, update_hash: "sha256:" + sha }] } } }, null, 2))
-          ' "$id" "$VERSION" "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/my-own-jdownloader-firefox-$VERSION.xpi" "$sha" > out/firefox-updates.json
-
-      - name: Names without the version, for stable download links
-        run: |
-          cp "out/my-own-jdownloader-chrome-$VERSION.zip" out/my-own-jdownloader-chrome.zip
-          cp "out/my-own-jdownloader-firefox-$VERSION.xpi" out/my-own-jdownloader-firefox.xpi
+          ' "$id" "$VERSION" "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/my-own-jdownloader-firefox.xpi" "$sha" > out/firefox-updates.json
 
       - name: Build the Android app
         env:
@@ -74,6 +70,12 @@ jobs:
             myjd-android gradle --no-daemon -q assembleRelease -PversionCode=$code
           cp android/app/build/outputs/apk/release/app-release.apk out/my-own-jdownloader.apk
           rm -rf "$keys"
+          # What the app and the extension read at GitHub to find out whether they may update (compat.json: the backend level this release needs).
+          node -e '
+            const [version, code, name, sha, repo] = process.argv.slice(1)
+            const { requiresApi } = require("./compat.json")
+            console.log(JSON.stringify({ version, requiresApi, apk: { versionCode: Number(code), versionName: name, sha256: sha, url: `https://github.com/${repo}/releases/latest/download/my-own-jdownloader.apk` } }, null, 2))
+          ' "$VERSION" "$code" "$(sed -n 's/.*versionName = "\(.*\)"/\1/p' android/app/build.gradle.kts | head -1)" "$(sha256sum out/my-own-jdownloader.apk | cut -d' ' -f1)" "$GITHUB_REPOSITORY" > out/release.json
 
       - name: Publish the release
         env:
