@@ -1,6 +1,7 @@
 {
   "name": "my-own-jdownloader",
   "private": true,
+  "license": "MIT",
   "workspaces": ["backend", "frontend"],
   "scripts": {
     "dev:backend": "npm run dev -w backend",

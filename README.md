@@ -142,3 +142,7 @@ stream and the clients are built is in [DEVELOPER.md](docs/DEVELOPER.md). A shor
 
 - This is an independent project and not affiliated with AppWork or JDownloader.
 - The app holds your MyJDownloader credentials and plugins run with the server's rights. Only install plugins you trust.
+
+## License
+
+[MIT](LICENSE)
