@@ -8,6 +8,8 @@ const target = computed(() => menu.value?.target)
 // Starting only makes sense for what is waiting: not for a running or a finished download (JD has no per-download pause).
 // A running download is stopped by disabling it: JD aborts it then. That entry takes the place of "Start".
 const stopsRunning = computed(() => target.value?.area === 'downloads' && target.value.running === true && target.value.enabled)
+// Resume takes skipped links back into the queue: nothing to do for a finished one.
+const canResume = computed(() => target.value?.area === 'downloads' && !target.value.finished)
 const canStart = computed(() => target.value?.area === 'downloads' && !target.value.running && !target.value.finished)
 
 // Keep the menu inside the viewport: it is placed at the pointer first, then moved by its measured size.
@@ -92,7 +94,7 @@ onUnmounted(() => {
           <OctagonPause :size="15" style="color: #e0a030" /> {{ target.stopMarked ? 'Remove stop mark' : 'Set stop mark here' }}
         </button>
       </li>
-      <li v-if="on('resume') && target.area === 'downloads'">
+      <li v-if="on('resume') && canResume">
         <button type="button" role="menuitem" @click="resumeItem(target)">
           <SkipForward :size="15" /> Resume
         </button>
@@ -117,7 +119,7 @@ onUnmounted(() => {
           <Merge :size="15" /> Merge {{ target.mergeIds.length }} packages here
         </button>
       </li>
-      <li v-if="stopsRunning || canStart || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1) || (on('stopMark') && target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || (on('resume') && target.area === 'downloads') || (on('extract') && hasArchiveEntries)" class="sep" role="separator" />
+      <li v-if="stopsRunning || canStart || target.area === 'linkgrabber' || (target.mergeIds && target.mergeIds.length > 1) || (on('stopMark') && target.area === 'downloads' && !target.finished && !target.selectedLinkIds) || (on('resume') && canResume) || (on('extract') && hasArchiveEntries)" class="sep" role="separator" />
       <li v-if="on('rename')">
         <button type="button" role="menuitem" :disabled="isMulti(target)" :title="isMulti(target) ? 'Only one item can be renamed at a time' : undefined" @click="startRename(target)">
           <Pencil :size="15" /> Rename <kbd>F2</kbd>
