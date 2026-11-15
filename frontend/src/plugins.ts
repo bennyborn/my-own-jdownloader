@@ -20,6 +20,8 @@ export interface PluginInfo {
   description?: string
   version?: string
   ui: boolean
+  // Can read image captchas (see CaptchaDialog.vue); shown without a dedicated settings page, like any other plugin capability.
+  captchaSolver: boolean
   enabled: boolean
   configured: boolean
   error?: string
@@ -30,6 +32,7 @@ export const plugins = ref<PluginInfo[]>([])
 // Bumped when plugin settings change, so the blocks ask their plugins again.
 export const pluginTick = ref(0)
 const activeIds = computed(() => new Set(plugins.value.filter((p) => p.enabled && p.configured).map((p) => p.id)))
+export const captchaSolverActive = computed(() => plugins.value.some((p) => p.captchaSolver && activeIds.value.has(p.id)))
 
 // --- Blocks -----------------------------------------------------------------------------------------------
 // The core templates define named blocks with their own default content (see PackageSlot.vue). A plugin's

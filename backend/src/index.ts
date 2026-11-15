@@ -15,6 +15,7 @@ import { EXTENSION_TARGETS, ExtensionBundle } from './extension.js'
 import { FirefoxPackage, firefoxIdFor, publicUrlFrom } from './firefox.js'
 import { HostIcons } from './icons.js'
 import { Plugins } from './plugins.js'
+import { CaptchaAutoSolver } from './captchaautosolver.js'
 import { join } from 'node:path'
 import { SolverTasks } from './solver.js'
 import { MyJdClient } from './myjd/client.js'
@@ -712,6 +713,27 @@ const plugins = new Plugins(
   app.log
 )
 await plugins.load()
+
+// Auto-submits a plugin's guess shortly after it is made, so a captcha-solving plugin also helps without the web UI
+// open; only polls devices on its own while such a plugin is enabled and set up (see captchaautosolver.ts).
+const captchaAutoSolver = new CaptchaAutoSolver(plugins, () => registry.all(), app.log)
+captchaAutoSolver.start()
+
+// Optional guess for the answer field of an image captcha: the first enabled plugin that can read one (e.g. a local
+// object-detection model) gets a try; null if none can or it found nothing. A confident guess auto-submits itself
+// shortly after, the same as when nobody has this open (see captchaautosolver.ts); typing or sending a different
+// answer first resolves the job, so the timer then has nothing left to submit.
+app.get<{ Params: { id: string } }>('/api/captcha/:id/suggest', async (request, reply) => {
+  const id = Number(request.params.id)
+  if (!Number.isSafeInteger(id)) return reply.code(400).send({ error: 'Invalid id' })
+  const context = dev(request)
+  const [image, jobs] = await Promise.all([context.captchas.image(id), context.captchas.list()])
+  if (!image) return reply.code(404).send({ error: 'No picture for this captcha' })
+  const job = jobs.find((j) => j.id === id)
+  const text = await plugins.solveCaptcha(image.data, image.type, job?.hoster ?? '')
+  const autoSubmitInMs = text && job ? captchaAutoSolver.schedule(context, id, text, job.remaining) : undefined
+  return { text, autoSubmitInMs }
+})
 
 // Premium accounts of one device. Passwords go in, never out.
 const text = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''

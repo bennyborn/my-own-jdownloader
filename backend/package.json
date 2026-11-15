@@ -11,6 +11,9 @@
     "@fastify/static": "^10.1.8",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "fastify": "^5.0.0",
+    "jpeg-js": "^0.4.4",
+    "onnxruntime-web": "^1.20.1",
+    "pngjs": "^7.0.0",
     "pino-pretty": "^13.2.0",
     "simple-icons": "^16.35.0",
     "zod": "^4.6.7"

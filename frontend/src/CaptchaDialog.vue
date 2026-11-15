@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { toneIcon } from './iconTone'
 import { multiple, withDevice } from './devices'
-import { ChevronDown, Clock, RefreshCw } from '@lucide/vue'
+import { ChevronDown, Clock, RefreshCw, CpuAi } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { formatCountdown } from './format'
 import { showError } from './toast'
+import { captchaSolverActive } from './plugins'
 import type { CaptchaJob } from './useCaptchas'
 
 const props = defineProps<{ job: CaptchaJob | null; more: number }>()
@@ -15,6 +16,10 @@ const busy = ref(false)
 const menu = ref(false)
 const imageVersion = ref(0) // changes trigger loading the picture again
 const input = ref<HTMLInputElement | null>(null)
+const guessing = ref(false) // the AI is reading the picture
+const guessed = ref(false) // the field holds its guess
+const suggestion = ref('') // what the AI read, kept for the hint when the field has other text
+const autoSubmitAt = ref<number | null>(null) // when the backend will send the AI's guess on its own, unless answered first
 
 // Refreshing: JD issues a new captcha, which can take a moment. The dialog stays open (showing the old
 // job's hoster) and signals that a new one is being requested.
@@ -56,21 +61,60 @@ let tick: ReturnType<typeof setInterval> | undefined
 onMounted(() => (tick = setInterval(() => (now.value = Date.now()), 1000)))
 onUnmounted(() => clearInterval(tick))
 const remainingMs = computed(() => (props.job ? props.job.remaining - (now.value - props.job.fetchedAt) : 0))
+const autoSubmitSeconds = computed(() => (autoSubmitAt.value ? Math.max(0, Math.ceil((autoSubmitAt.value - now.value) / 1000)) : null))
 
 // A new captcha starts with an empty field and the cursor in it.
 watch(
   () => props.job?.id,
   async (id) => {
     text.value = ''
+    guessed.value = false
+    suggestion.value = ''
+    autoSubmitAt.value = null
     menu.value = false
     imageVersion.value++
     if (id !== undefined) stopRefreshing() // the new captcha has arrived
     if (id === undefined) return
     await nextTick()
     input.value?.focus()
+    void guess(id)
   },
   { immediate: true }
 )
+
+// Optional: a vision model reads the picture and its guess goes into the field (selected, so typing replaces it). When the user has
+// typed something already, that stays and the guess only shows below the field, to take over with a click. A failure leaves everything as it is.
+async function guess(id: number) {
+  const device = props.job?.device
+  if (!captchaSolverActive.value || !device) return
+  guessing.value = true
+  try {
+    const res = await fetch(withDevice(`/api/captcha/${id}/suggest`, device))
+    if (!res.ok) return
+    const { text: read, autoSubmitInMs } = (await res.json()) as { text: string | null; autoSubmitInMs?: number }
+    if (read && props.job?.id === id) {
+      suggestion.value = read
+      if (autoSubmitInMs !== undefined) autoSubmitAt.value = Date.now() + autoSubmitInMs
+      if (!text.value) {
+        text.value = read
+        guessed.value = true
+        await nextTick()
+        input.value?.select()
+      }
+    }
+  } catch {
+    /* no guess */
+  } finally {
+    if (props.job?.id === id) guessing.value = false
+  }
+}
+
+const useSuggestion = async () => {
+  text.value = suggestion.value
+  guessed.value = true
+  await nextTick()
+  input.value?.focus()
+}
 
 const post = async (path: string, body: unknown) => {
   const res = await fetch(withDevice(path, (props.job ?? lastJob.value)?.device), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -147,13 +191,22 @@ const refresh = async () => {
       </h3>
       <p class="ask">
         <span v-if="more" class="more" :title="`${more} more waiting`">{{ more + 1 }}</span>
-        <span class="line"><strong>{{ view.hoster }}</strong> wants you to solve this captcha<template v-if="multiple && view.deviceName"> <span class="muted">(on {{ view.deviceName }})</span></template></span>
+        <span class="line"><strong>{{ view.hoster }}</strong> wants you to solve this captcha<template v-if="multiple && view.deviceName">{{ ' ' }}<span class="muted">(on {{ view.deviceName }})</span></template></span>
       </p>
       <div class="picture" :class="{ loading: refreshing }">
         <img v-if="imageSrc" class="allow-contextmenu" :src="imageSrc" alt="Captcha" />
         <div v-if="refreshing" class="wait" role="status"><RefreshCw :size="22" class="spin" /> Requesting a new captcha…</div>
       </div>
-      <input ref="input" v-model="text" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Enter response…" :disabled="busy || refreshing" @keydown.enter="solve" />
+      <input ref="input" v-model="text" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Enter response…" :disabled="busy || refreshing" @input="guessed = false" @keydown.enter="solve" />
+      <small v-if="guessing" class="hint"><CpuAi :size="13" class="pulse" /> The AI is reading the picture…</small>
+      <small v-else-if="guessed" class="hint">
+        <CpuAi :size="13" /> Guessed by the AI, please check<template v-if="autoSubmitSeconds !== null">{{ ' ' }}<span class="muted">(sent automatically in {{ autoSubmitSeconds }}s unless corrected)</span></template>
+      </small>
+      <small v-else-if="suggestion && suggestion !== text" class="hint">
+        <CpuAi :size="13" /> The AI read
+        <button type="button" class="take" title="Use this" :disabled="busy || refreshing" @click="useSuggestion">{{ suggestion }}</button>
+        <template v-if="autoSubmitSeconds !== null">{{ ' ' }}<span class="muted">(sent automatically in {{ autoSubmitSeconds }}s unless you answer first)</span></template>
+      </small>
       <div class="actions">
         <span class="spacer" />
         <button type="button" class="icon" title="New picture" :disabled="busy || refreshing" @click.stop="refresh"><RefreshCw :size="16" /></button>
@@ -183,8 +236,12 @@ h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding-bottom: 1
 .picture { position: relative; min-height: 96px; display: flex; align-items: center; justify-content: center; padding: 12px; background: #fff; border-radius: 8px; }
 .picture.loading img { opacity: 0.2; }
 .wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #333; font-weight: 600; }
+.hint { display: flex; align-items: center; gap: 6px; margin-top: -8px; color: var(--muted); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.hint .take { padding: 1px 8px; font: inherit; font-weight: 600; color: var(--text); }
+.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 .picture img { max-width: 100%; height: auto; image-rendering: auto; }
 input { padding: 9px 11px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 1.05rem; }
 input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }

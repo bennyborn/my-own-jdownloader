@@ -6,6 +6,8 @@ services:
     build: .
     volumes:
       - ./plugins:/app/plugins:ro
+      # Your own plugins, not part of the repo (gitignored); harmless if the folder does not exist
+      - ./plugins-extra:/app/plugins-extra:ro
       # The Android app (android/build.sh puts the APK there); offered for download in the settings
       - ./android/dist:/app/apk:ro
 

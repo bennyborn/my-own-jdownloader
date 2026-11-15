@@ -47,8 +47,19 @@ export interface PackageContext {
   image: (url: string) => Promise<string>
 }
 
+export interface CaptchaContext {
+  image: Buffer
+  mime: string
+  // The hoster JD reports for the job (e.g. "k2s.cc"), so a plugin trained on specific captcha styles can restrict itself.
+  hoster: string
+  settings: Record<string, SettingValue>
+  signal: AbortSignal
+}
+
 interface PluginModule {
   packageData?: (context: PackageContext) => Promise<PackageData | null | undefined>
+  // Reads an image captcha (e.g. with a local object-detection model); null/undefined when it found nothing.
+  solveCaptcha?: (context: CaptchaContext) => Promise<{ text: string } | null | undefined>
 }
 
 interface Loaded {
@@ -70,6 +81,7 @@ export interface PluginInfo {
   description?: string
   version?: string
   ui: boolean
+  captchaSolver: boolean
   enabled: boolean
   configured: boolean
   error?: string
@@ -173,6 +185,7 @@ export class Plugins {
         description: loaded.manifest.description,
         version: loaded.manifest.version,
         ui: Boolean(loaded.manifest.ui),
+        captchaSolver: Boolean(loaded.module?.solveCaptcha),
         enabled: this.stored[loaded.manifest.id]?.enabled === true,
         configured: this.configured(loaded),
         error: loaded.loadError ?? loaded.lastError,
@@ -251,6 +264,22 @@ export class Plugins {
     const loaded = this.plugins.get(id)
     if (!loaded?.module?.packageData || !this.isActive(loaded)) return null
     return this.dataFor(loaded, name, key, urls)
+  }
+
+  // The first active plugin that can read image captchas gets a try; null if none can or it found nothing.
+  async solveCaptcha(image: Buffer, mime: string, hoster: string): Promise<string | null> {
+    for (const loaded of this.plugins.values()) {
+      if (!loaded.module?.solveCaptcha || !this.isActive(loaded)) continue
+      try {
+        const result = await loaded.module.solveCaptcha({ image, mime, hoster, settings: this.valuesOf(loaded), signal: AbortSignal.timeout(20000) })
+        loaded.lastError = undefined
+        if (result?.text) return result.text
+      } catch (e) {
+        loaded.lastError = e instanceof Error ? e.message : String(e)
+        this.log.warn(`Plugin "${loaded.manifest.id}" failed to read a captcha: ${loaded.lastError}`)
+      }
+    }
+    return null
   }
 
   // `packageKey` tells packages apart that have the same name (the device and the package's uuid).
