@@ -198,6 +198,20 @@ export class DownloadsPoller {
     }))
   }
 
+  // One-off, read-only: has this single link actually made progress (running, finished, or some bytes loaded)?
+  // Undefined if the link is gone or the call fails. No polling or subscription, unlike the snapshot above.
+  async hasStarted(linkUuid: number): Promise<boolean | undefined> {
+    try {
+      const raw = await this.client.callDevice<{ uuid?: number; running?: boolean; finished?: boolean; bytesLoaded?: number }[]>(this.deviceId, '/downloadsV2/queryLinks', [
+        { linkUUIDs: [linkUuid], running: true, finished: true, bytesLoaded: true }
+      ])
+      const link = raw.find((l) => l.uuid === linkUuid)
+      return link ? Boolean(link.running || link.finished || (link.bytesLoaded ?? 0) > 0) : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   // Read-only: the source URLs of a package's links.
   async getUrls(packageUuid: number): Promise<string[]> {
     const raw = await this.client.callDevice<{ url?: string }[]>(this.deviceId, '/downloadsV2/queryLinks', [

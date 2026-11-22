@@ -632,7 +632,11 @@ app.post<{ Params: { id: string }; Body: { token?: unknown; text?: unknown } }>(
   const { token, text } = request.body ?? {}
   if (!Number.isSafeInteger(id)) return reply.code(400).send({ error: 'Invalid request' })
   if (typeof text === 'string' && text.trim() && text.length <= 200) {
-    await dev(request).captchas.solveText(id, text.trim())
+    const value = text.trim()
+    const context = dev(request)
+    const [image, jobs] = await Promise.all([context.captchas.image(id), context.captchas.list()])
+    await context.captchas.solveText(id, value)
+    if (image) plugins.notifyCaptchaSolved(image.data, image.type, value, jobs.find((j) => j.id === id)?.hoster ?? '')
     return { ok: true }
   }
   if (typeof token !== 'string' || !token || token.length > 10_000) return reply.code(400).send({ error: 'Invalid request' })
@@ -731,7 +735,7 @@ app.get<{ Params: { id: string } }>('/api/captcha/:id/suggest', async (request, 
   if (!image) return reply.code(404).send({ error: 'No picture for this captcha' })
   const job = jobs.find((j) => j.id === id)
   const text = await plugins.solveCaptcha(image.data, image.type, job?.hoster ?? '')
-  const autoSubmitInMs = text && job ? captchaAutoSolver.schedule(context, id, text, job.remaining) : undefined
+  const autoSubmitInMs = text && job ? captchaAutoSolver.schedule(context, id, text, job.remaining, { image: image.data, mime: image.type, link: job.link, hoster: job.hoster }) : undefined
   return { text, autoSubmitInMs }
 })
 

@@ -56,10 +56,22 @@ export interface CaptchaContext {
   signal: AbortSignal
 }
 
+export interface CaptchaSolvedContext {
+  image: Buffer
+  mime: string
+  // The text a human actually confirmed in the dialog (their own answer, or a corrected plugin suggestion).
+  text: string
+  hoster: string
+  settings: Record<string, SettingValue>
+}
+
 interface PluginModule {
   packageData?: (context: PackageContext) => Promise<PackageData | null | undefined>
   // Reads an image captcha (e.g. with a local object-detection model); null/undefined when it found nothing.
   solveCaptcha?: (context: CaptchaContext) => Promise<{ text: string } | null | undefined>
+  // Optional: told the confirmed answer whenever a human solves an image captcha by hand, whether or not this
+  // plugin suggested one. This module does nothing with it; a plugin that keeps training data can act on it.
+  captchaSolved?: (context: CaptchaSolvedContext) => Promise<void> | void
 }
 
 interface Loaded {
@@ -280,6 +292,18 @@ export class Plugins {
       }
     }
     return null
+  }
+
+  // Fire-and-forget: tells every active plugin with this hook what a human actually confirmed, so one that keeps
+  // training data can save it under the right label. Never awaited by the caller, never throws.
+  notifyCaptchaSolved(image: Buffer, mime: string, text: string, hoster: string): void {
+    for (const loaded of this.plugins.values()) {
+      if (!loaded.module?.captchaSolved || !this.isActive(loaded)) continue
+      void Promise.resolve(loaded.module.captchaSolved({ image, mime, text, hoster, settings: this.valuesOf(loaded) })).catch((e) => {
+        loaded.lastError = e instanceof Error ? e.message : String(e)
+        this.log.warn(`Plugin "${loaded.manifest.id}" failed on captchaSolved: ${loaded.lastError}`)
+      })
+    }
   }
 
   // `packageKey` tells packages apart that have the same name (the device and the package's uuid).
