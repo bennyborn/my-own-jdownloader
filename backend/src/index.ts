@@ -918,6 +918,85 @@ app.post<{ Params: { uuid: string }; Body: { linkIds?: unknown; afterLinkId?: un
   }
 )
 
+// JD's own addLinks appends the package name to destinationFolder itself (same as the folder history dropdown
+// offers only parent folders, see Linkgrabber.getFolders), so a package's own saveTo - which already ends in its
+// name - must have that last segment stripped before it is used as the destinationFolder for a new package of
+// the same name, or the folder would be nested twice.
+const parentFolder = (saveTo?: string): string | undefined => {
+  const trimmed = saveTo?.replace(/\/+$/, '')
+  const at = trimmed?.lastIndexOf('/') ?? -1
+  return at > 0 ? trimmed!.slice(0, at) : undefined
+}
+
+// Whether a package with this name showed up on the target (linkgrabber or download list) after an addLinks call,
+// so the source is only removed once the move actually produced something there. JD can silently fold the new
+// links into an unrelated existing package instead of creating ours (e.g. a duplicate of a link already present,
+// disabled, somewhere else) - addLinks reports success regardless, so this is the only way to notice that.
+const packageLandedOnTarget = async (target: DeviceContext, name: string): Promise<boolean> => {
+  for (let i = 0; i < 5; i++) {
+    const [grabberPackages, snapshot] = await Promise.all([target.grabber.getPackages(), target.poller.refresh(0)])
+    if (grabberPackages.some((p) => p.name === name) || snapshot.packages.some((p) => p.name === name)) return true
+    if (i < 4) await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  return false
+}
+
+// Moves a whole package (linkgrabber or download list) to another device: reads its links as plain URLs from the
+// source, adds them on the target (own addLinks call, so the package gets a new uuid there), and only once that
+// is confirmed to have landed removes the original. For the download list this restarts the transfer from zero
+// on the target (JD cannot hand over a partial file between devices) and deletes the partial file on the source;
+// a finished package is refused since redownloading it would serve no purpose.
+app.post<{ Body: { area?: unknown; packageId?: unknown; targetDevice?: unknown } }>('/api/packages/move-to-device', async (request, reply) => {
+  const { area, packageId, targetDevice } = request.body ?? {}
+  if ((area !== 'downloads' && area !== 'linkgrabber') || !Number.isSafeInteger(packageId) || typeof targetDevice !== 'string' || !targetDevice) {
+    return reply.code(400).send({ error: 'Invalid request' })
+  }
+  const source = dev(request)
+  const target = registry.resolve(targetDevice)
+  if (source.id === target.id) return reply.code(400).send({ error: 'Source and target are the same device' })
+
+  if (area === 'linkgrabber') {
+    const pkg = (await source.grabber.getPackages()).find((p) => p.uuid === packageId)
+    if (!pkg) return reply.code(404).send({ error: 'Package not found' })
+    const urls = await source.grabber.getUrls(packageId as number)
+    if (!urls.length) return reply.code(400).send({ error: 'Package has no resolvable links' })
+    await target.grabber.addLinks({
+      links: urls.join('\n'),
+      packageName: pkg.name,
+      destinationFolder: parentFolder(pkg.saveTo),
+      autostart: false,
+      autoExtract: false,
+      deepDecrypt: false,
+      overwritePackagizerRules: false
+    })
+    if (!(await packageLandedOnTarget(target, pkg.name))) {
+      return reply.code(409).send({ error: 'Could not confirm the package on the target device (its links may be duplicates of something already there); nothing was removed from the source' })
+    }
+    await source.grabber.remove([], [packageId as number])
+    return { ok: true }
+  }
+
+  const pkg = (await source.poller.refresh(2000)).packages.find((p) => p.uuid === packageId)
+  if (!pkg) return reply.code(404).send({ error: 'Package not found' })
+  if (pkg.finished) return reply.code(400).send({ error: 'Finished packages cannot be moved' })
+  const urls = await source.listOps.downloads.getUrls('package', packageId as number)
+  if (!urls.length) return reply.code(400).send({ error: 'Package has no resolvable links' })
+  await target.grabber.addLinks({
+    links: urls.join('\n'),
+    packageName: pkg.name,
+    destinationFolder: parentFolder(pkg.saveTo),
+    autostart: true,
+    autoExtract: false,
+    deepDecrypt: false,
+    overwritePackagizerRules: false
+  })
+  if (!(await packageLandedOnTarget(target, pkg.name))) {
+    return reply.code(409).send({ error: 'Could not confirm the package on the target device (its links may be duplicates of something already there); nothing was removed from the source' })
+  }
+  await source.listOps.downloads.removeFromDownloads([], [packageId as number], true)
+  return { ok: true }
+})
+
 // The one stream of the web UI (see live.ts for what is shared by all pages). Without ?device= it carries the captchas, the questions of the
 // JDownloaders and the device list; ?device=<id> adds the downloads and the linkgrabber of that device, ?device=all those of every online
 // device (each event says which device it is about). ?grabber=slow looks at the linkgrabber only now and then (its page is not shown).
@@ -934,7 +1013,7 @@ app.get<{ Querystring: { device?: string; grabber?: string } }>('/api/live', (re
   const { device, grabber } = request.query
   const contexts = !device ? [] : device === 'all' ? registry.all().filter((c) => c.online !== false) : [dev(request)]
   reply.hijack()
-  reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+  reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
   const write = (event: string, data: string) => reply.raw.write(`event: ${event}\ndata: ${data}\n\n`)
   const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 25000)
   const stops = [live.subscribe(write)]

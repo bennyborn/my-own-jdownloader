@@ -147,7 +147,8 @@ h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .empty { color: var(--muted); text-align: center; }
 .empty-big { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 55vh; color: var(--muted); text-align: center; }
 .empty-big p { margin: 8px 0 0; font-size: 1.1rem; color: var(--text); }
-.device-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 20px; }
+.device-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 20px; border-radius: 8px; transition: box-shadow 0.15s; }
+.device-section.cross-drop-target { box-shadow: inset 0 0 0 2px var(--accent); }
 .device-head { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 1rem; }
 .device-head .totals, .device-head .state { margin-left: auto; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
 .device-head .state { text-transform: uppercase; letter-spacing: 0.03em; }

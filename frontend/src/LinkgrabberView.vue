@@ -7,6 +7,7 @@ import { ChevronRight, GripVertical, CircleCheck, CircleHelp, CircleX, Folder, I
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { askConfirm } from './confirm'
 import { inMergeZone, useDragReorder } from './dragReorder'
+import { endCrossDrag, startCrossDrag } from './crossDeviceDrag'
 import { addPending, reorderOp, withPending, type PendingOp } from './pendingOps'
 import { expandedGrabber } from './expandedState'
 import { formatBytes } from './format'
@@ -220,6 +221,12 @@ const endDrag = () => {
   intoId.value = null
   linkDrag.onDragEnd()
   packageDrag.onDragEnd()
+  endCrossDrag()
+}
+// Only in the "all devices" overview (props.device set) is there another device's list to drop onto.
+const onPackageDragStart = (p: { uuid: number; name: string }, event: DragEvent) => {
+  packageDrag.onDragStart(p.uuid, event)
+  if (props.device) startCrossDrag({ area: 'linkgrabber', device: props.device, packageId: p.uuid, name: p.name, hasProgress: false })
 }
 // Dragged links: the selection when the dragged link is part of it, else just that link.
 const draggedLinkIds = () => {
@@ -373,7 +380,7 @@ const removeSelected = async () => {
       :class="[{ 'menu-open': menuOn('linkgrabber', 'package', p.uuid), disabled: isPackageDisabled(p), 'has-offline': hasOffline(p), dragging: packageDrag.dragId.value === p.uuid, 'drop-into': intoId === p.uuid }, packageDrag.dropClass(p.uuid)]"
       :draggable="draggablePackage === p.uuid"
       @mouseup="draggablePackage = null"
-      @dragstart="packageDrag.onDragStart(p.uuid, $event)"
+      @dragstart="onPackageDragStart(p, $event)"
       @dragover="onPackageDragOver(p, $event)"
       @dragleave="intoId === p.uuid && !($event.currentTarget as HTMLElement).contains($event.relatedTarget as Node) && (intoId = null)"
       @drop="onPackageDrop(p, $event)"

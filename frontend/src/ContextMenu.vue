@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ArchiveRestore, BrushCleaning, CircleCheck, Flag, KeyRound, Lock, RotateCcw, SkipForward, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Shuffle, Split, Square, Trash2 } from '@lucide/vue'
+import { ArchiveRestore, BrushCleaning, CircleCheck, Flag, KeyRound, Lock, RotateCcw, SkipForward, Check, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Folder, OctagonPause, Layers, Link2, Merge, PackagePlus, Pencil, Play, Power, PowerOff, ArrowDownAZ, Server, Shuffle, Split, Square, Trash2 } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import PriorityMark from './PriorityMark.vue'
 import { menuEntryOn as on } from './menuConfig'
-import { addArchivePassword, isMulti, checkOnline, cleanupItem, closeMenu, resumeItem, setDownloadPassword, setPriority, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
+import { multiple } from './devices'
+import { addArchivePassword, isMulti, checkOnline, cleanupItem, closeMenu, resumeItem, setDownloadPassword, setPriority, menu, revealItem, scrollIgnored, menuArchives, menuArchivesPending, mergePackages, moveToDownloads, moveToEdge, removeItem, resetItem, startDownload, startFolder, startMoveToDevice, startExtraction, startRename, toggleStopMark, toggleArchiveSetting, interleaveHosts, sortLinks, splitBlocked, splitByHost, startShowLinks, startVariants, toggleEnabled } from './itemActions'
 
 const target = computed(() => menu.value?.target)
 // Phone: what the list hides (status, speed, size, ...) for a single download, live.
@@ -157,6 +158,11 @@ onUnmounted(() => {
       <li v-if="on('folder') && target.kind === 'package'">
         <button type="button" role="menuitem" @click="startFolder(target)">
           <Folder :size="15" /> Change download folder…
+        </button>
+      </li>
+      <li v-if="on('moveToDevice') && target.kind === 'package' && multiple && !target.finished && !isMulti(target)">
+        <button type="button" role="menuitem" @click="startMoveToDevice(target)">
+          <Server :size="15" /> Move to device…
         </button>
       </li>
       <li v-if="on('split') && target.kind === 'package'">

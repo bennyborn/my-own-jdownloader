@@ -15,6 +15,8 @@ import ContextMenu from './ContextMenu.vue'
 import LinksDialog from './LinksDialog.vue'
 import ItemDialogs from './ItemDialogs.vue'
 import VariantDialog from './VariantDialog.vue'
+import MoveToDeviceDialog from './MoveToDeviceDialog.vue'
+import MovingDialog from './MovingDialog.vue'
 import { actionError, changeTick, movedTick, choosingFolder, renaming } from './itemActions'
 import { useDownloads } from './useDownloads'
 import { Download, FileDown, Link2, Settings } from '@lucide/vue'
@@ -42,6 +44,7 @@ import StatusBar from './StatusBar.vue'
 import PackageCard from './PackageCard.vue'
 import { useDragReorder } from './dragReorder'
 import { addPending, reorderOp, withPending } from './pendingOps'
+import { crossDrag, dropCrossDrag, endCrossDrag, startCrossDrag } from './crossDeviceDrag'
 
 useDevices()
 useBackendUpdate()
@@ -279,6 +282,17 @@ const dragFor = (device: string) => {
   }
   return drag
 }
+
+// Section of the "all devices" overview a package is dragged over to move it there outright (a plain drop onto
+// a card of the same device still reorders/merges as usual, see dragFor above).
+const onSectionDragOver = (device: string, event: DragEvent) => {
+  if (crossDrag.value && crossDrag.value.device !== device) event.preventDefault()
+}
+const onSectionDrop = (device: string, event: DragEvent) => {
+  if (!crossDrag.value || crossDrag.value.device === device) return
+  event.preventDefault()
+  void dropCrossDrag(device, () => changeTick.value++)
+}
 </script>
 
 <template>
@@ -313,7 +327,14 @@ const dragFor = (device: string) => {
     <div :key="tab" class="view">
     <SettingsView v-if="tab === 'settings'" />
     <template v-else-if="tab === 'downloads' && showingAll">
-      <section v-for="s in sections" :key="s.device.id" class="device-section">
+      <section
+        v-for="s in sections"
+        :key="s.device.id"
+        class="device-section"
+        :class="{ 'cross-drop-target': crossDrag && crossDrag.device !== s.device.id }"
+        @dragover="onSectionDragOver(s.device.id, $event)"
+        @drop="onSectionDrop(s.device.id, $event)"
+      >
         <h2 class="device-head" :class="{ offline: s.device.online === false }">
           <ServerOff v-if="s.device.online === false" :size="16" />
           <span class="name">{{ s.device.name }}</span>
@@ -330,10 +351,10 @@ const dragFor = (device: string) => {
           :pkg="p"
           :device="s.device.id"
           :class="[dragFor(s.device.id).dropClass(p.uuid), { dragging: dragFor(s.device.id).dragId.value === p.uuid, 'drop-into': dragFor(s.device.id).mergeId.value === p.uuid }]"
-          @dragstart="dragFor(s.device.id).onDragStart(p.uuid, $event)"
+          @dragstart="dragFor(s.device.id).onDragStart(p.uuid, $event); startCrossDrag({ area: 'downloads', device: s.device.id, packageId: p.uuid, name: p.name, hasProgress: p.running || p.bytesLoaded > 0 })"
           @dragover="dragFor(s.device.id).onDragOver(p.uuid, $event)"
           @drop="dragFor(s.device.id).onDrop($event)"
-          @dragend="dragFor(s.device.id).onDragEnd()"
+          @dragend="dragFor(s.device.id).onDragEnd(); endCrossDrag()"
         />
       </section>
     </template>
@@ -358,7 +379,14 @@ const dragFor = (device: string) => {
       />
     </template>
     <template v-else-if="showingAll">
-      <section v-for="d in devices" :key="d.id" class="device-section">
+      <section
+        v-for="d in devices"
+        :key="d.id"
+        class="device-section"
+        :class="{ 'cross-drop-target': crossDrag && crossDrag.device !== d.id }"
+        @dragover="onSectionDragOver(d.id, $event)"
+        @drop="onSectionDrop(d.id, $event)"
+      >
         <h2 class="device-head" :class="{ offline: d.online === false }">
           <ServerOff v-if="d.online === false" :size="16" />
           <span class="name">{{ d.name }}</span>
@@ -386,6 +414,8 @@ const dragFor = (device: string) => {
   <ItemDialogs />
   <LinksDialog />
   <VariantDialog />
+  <MoveToDeviceDialog />
+  <MovingDialog />
   <div v-if="dropping.active.value" class="dropzone"><FileDown :size="40" /> Drop container files or links to add them, or a text file to open it in the add-links dialog</div>
   <AddLinksModal v-if="addOpen" :initial-links="addPrefill" @close="addOpen = false" @added="onAdded" />
 </template>

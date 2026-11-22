@@ -375,7 +375,7 @@ export const registerMcp = (app: FastifyInstance, options: McpOptions): void => 
   // The recorded calls: what exists so far, then every change as it happens.
   app.get('/api/mcp/log', (request, reply) => {
     reply.hijack()
-    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
     const send = (event: string, data: unknown) => reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
     const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 25000)
     send('entries', debug.all())

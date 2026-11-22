@@ -23,6 +23,7 @@ export const MENU_ENTRIES: MenuEntry[] = [
   { id: 'downloadPassword', label: 'Set download password', hint: 'The password JD sends along when downloading', default: true },
   { id: 'priority', label: 'Set priority', hint: 'Which links JD downloads first', default: false },
   { id: 'folder', label: 'Change download folder', hint: 'Packages only', default: true },
+  { id: 'moveToDevice', label: 'Move to device', hint: 'Packages only, also possible by drag and drop between devices in the "all devices" overview', default: true },
   { id: 'split', label: 'Split by host', hint: 'Packages only', default: true },
   { id: 'interleave', label: 'Interleave hosters', hint: 'Packages with more than one host', default: true },
   { id: 'sort', label: 'Sort links alphabetically', hint: 'Packages only', default: true },

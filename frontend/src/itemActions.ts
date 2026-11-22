@@ -44,6 +44,7 @@ export const renaming = ref<Target | null>(null)
 export const choosingFolder = ref<Target | null>(null)
 export const showingLinks = ref<Target | null>(null)
 export const choosingVariants = ref<Target | null>(null)
+export const choosingDevice = ref<Target | null>(null)
 export const hovered = ref<Target | null>(null)
 export const actionError = ref('')
 // Incremented after every successful change so lists can reload.
@@ -186,6 +187,11 @@ export const startVariants = (target: Target) => {
 export const startFolder = (target: Target) => {
   closeMenu()
   choosingFolder.value = target
+}
+// Touch / no drag-and-drop: the same move as dragging the package onto another device's list (crossDeviceDrag.ts).
+export const startMoveToDevice = (target: Target) => {
+  closeMenu()
+  choosingDevice.value = target
 }
 
 const post = async (t: Target, url: string, body: object): Promise<any> => {
